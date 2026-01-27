@@ -34,6 +34,11 @@ export type Currency = {
   name: string;
 };
 
+export interface AppData {
+  projects: Project[];
+  activeProjectId: string | null;
+}
+
 export const CURRENCIES: Currency[] = [
   { code: 'EUR', symbol: '€', name: 'Euro' },
   { code: 'USD', symbol: '$', name: 'Dólar estadounidense' },

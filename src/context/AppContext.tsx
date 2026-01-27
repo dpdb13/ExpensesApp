@@ -1,12 +1,16 @@
 import { createContext, useContext, useReducer, useEffect, type ReactNode, type Dispatch } from 'react';
-import type { Project, User, Expense, ExpenseShare } from '../types';
+import type { Project, User, Expense, ExpenseShare, AppData } from '../types';
 
 interface AppState {
-  project: Project;
+  projects: Project[];
+  activeProjectId: string | null;
 }
 
 type Action =
-  | { type: 'SET_PROJECT'; payload: Project }
+  | { type: 'SET_DATA'; payload: AppData }
+  | { type: 'CREATE_PROJECT'; payload: Project }
+  | { type: 'DELETE_PROJECT'; payload: string }
+  | { type: 'SELECT_PROJECT'; payload: string | null }
   | { type: 'ADD_USER'; payload: User }
   | { type: 'REMOVE_USER'; payload: string }
   | { type: 'ADD_EXPENSE'; payload: Expense }
@@ -14,71 +18,89 @@ type Action =
   | { type: 'UPDATE_PROJECT_NAME'; payload: string }
   | { type: 'SET_DEFAULT_CURRENCY'; payload: string };
 
-const initialProject: Project = {
-  id: '1',
-  name: 'Nuevo Proyecto',
-  users: [],
-  expenses: [],
-  defaultCurrency: 'EUR',
+const initialState: AppState = {
+  projects: [],
+  activeProjectId: null,
 };
 
-const initialState: AppState = {
-  project: initialProject,
-};
+function updateActiveProject(state: AppState, updater: (project: Project) => Project): AppState {
+  if (!state.activeProjectId) return state;
+
+  return {
+    ...state,
+    projects: state.projects.map((p) =>
+      p.id === state.activeProjectId ? updater(p) : p
+    ),
+  };
+}
 
 function appReducer(state: AppState, action: Action): AppState {
   switch (action.type) {
-    case 'SET_PROJECT':
-      return { ...state, project: action.payload };
+    case 'SET_DATA':
+      return {
+        projects: action.payload.projects,
+        activeProjectId: action.payload.activeProjectId,
+      };
+
+    case 'CREATE_PROJECT':
+      return {
+        ...state,
+        projects: [...state.projects, action.payload],
+        activeProjectId: action.payload.id,
+      };
+
+    case 'DELETE_PROJECT': {
+      const newProjects = state.projects.filter((p) => p.id !== action.payload);
+      return {
+        ...state,
+        projects: newProjects,
+        activeProjectId: state.activeProjectId === action.payload ? null : state.activeProjectId,
+      };
+    }
+
+    case 'SELECT_PROJECT':
+      return {
+        ...state,
+        activeProjectId: action.payload,
+      };
+
     case 'ADD_USER':
-      return {
-        ...state,
-        project: {
-          ...state.project,
-          users: [...state.project.users, action.payload],
-        },
-      };
+      return updateActiveProject(state, (project) => ({
+        ...project,
+        users: [...project.users, action.payload],
+      }));
+
     case 'REMOVE_USER':
-      return {
-        ...state,
-        project: {
-          ...state.project,
-          users: state.project.users.filter((u) => u.id !== action.payload),
-          expenses: state.project.expenses.filter((e) => e.paidBy !== action.payload),
-        },
-      };
+      return updateActiveProject(state, (project) => ({
+        ...project,
+        users: project.users.filter((u) => u.id !== action.payload),
+        expenses: project.expenses.filter((e) => e.paidBy !== action.payload),
+      }));
+
     case 'ADD_EXPENSE':
-      return {
-        ...state,
-        project: {
-          ...state.project,
-          expenses: [...state.project.expenses, action.payload],
-        },
-      };
+      return updateActiveProject(state, (project) => ({
+        ...project,
+        expenses: [...project.expenses, action.payload],
+      }));
+
     case 'REMOVE_EXPENSE':
-      return {
-        ...state,
-        project: {
-          ...state.project,
-          expenses: state.project.expenses.filter((e) => e.id !== action.payload),
-        },
-      };
+      return updateActiveProject(state, (project) => ({
+        ...project,
+        expenses: project.expenses.filter((e) => e.id !== action.payload),
+      }));
+
     case 'UPDATE_PROJECT_NAME':
-      return {
-        ...state,
-        project: {
-          ...state.project,
-          name: action.payload,
-        },
-      };
+      return updateActiveProject(state, (project) => ({
+        ...project,
+        name: action.payload,
+      }));
+
     case 'SET_DEFAULT_CURRENCY':
-      return {
-        ...state,
-        project: {
-          ...state.project,
-          defaultCurrency: action.payload,
-        },
-      };
+      return updateActiveProject(state, (project) => ({
+        ...project,
+        defaultCurrency: action.payload,
+      }));
+
     default:
       return state;
   }
@@ -87,6 +109,10 @@ function appReducer(state: AppState, action: Action): AppState {
 interface AppContextType {
   state: AppState;
   dispatch: Dispatch<Action>;
+  activeProject: Project | null;
+  createProject: (name: string) => void;
+  deleteProject: (id: string) => void;
+  selectProject: (id: string | null) => void;
   addUser: (name: string) => void;
   removeUser: (id: string) => void;
   addExpense: (expense: Omit<Expense, 'id'>) => void;
@@ -103,23 +129,76 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'expenses-app-data';
 
-export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(appReducer, initialState, (initial) => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        return { project: parsed };
-      } catch {
-        return initial;
-      }
+function migrateOldData(): AppState | null {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (!stored) return null;
+
+  try {
+    const parsed = JSON.parse(stored);
+
+    if (parsed.projects && Array.isArray(parsed.projects)) {
+      return {
+        projects: parsed.projects,
+        activeProjectId: parsed.activeProjectId || null,
+      };
     }
-    return initial;
+
+    if (parsed.id && parsed.name && parsed.users) {
+      const migratedProject: Project = {
+        id: parsed.id,
+        name: parsed.name,
+        users: parsed.users || [],
+        expenses: parsed.expenses || [],
+        defaultCurrency: parsed.defaultCurrency || 'EUR',
+      };
+      return {
+        projects: [migratedProject],
+        activeProjectId: null,
+      };
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function AppProvider({ children }: { children: ReactNode }) {
+  const [state, dispatch] = useReducer(appReducer, initialState, () => {
+    const migrated = migrateOldData();
+    return migrated || initialState;
   });
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.project));
-  }, [state.project]);
+    const dataToSave: AppData = {
+      projects: state.projects,
+      activeProjectId: state.activeProjectId,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+  }, [state]);
+
+  const activeProject = state.activeProjectId
+    ? state.projects.find((p) => p.id === state.activeProjectId) || null
+    : null;
+
+  const createProject = (name: string) => {
+    const newProject: Project = {
+      id: crypto.randomUUID(),
+      name,
+      users: [],
+      expenses: [],
+      defaultCurrency: 'EUR',
+    };
+    dispatch({ type: 'CREATE_PROJECT', payload: newProject });
+  };
+
+  const deleteProject = (id: string) => {
+    dispatch({ type: 'DELETE_PROJECT', payload: id });
+  };
+
+  const selectProject = (id: string | null) => {
+    dispatch({ type: 'SELECT_PROJECT', payload: id });
+  };
 
   const addUser = (name: string) => {
     const newUser: User = {
@@ -154,19 +233,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const getUserById = (id: string) => {
-    return state.project.users.find((u: User) => u.id === id);
+    return activeProject?.users.find((u: User) => u.id === id);
   };
 
   const getTotalExpenses = () => {
-    return state.project.expenses.reduce((sum: number, e: Expense) => sum + e.amount, 0);
+    if (!activeProject) return 0;
+    return activeProject.expenses.reduce((sum: number, e: Expense) => sum + e.amount, 0);
   };
 
   const getUserBalance = (userId: string) => {
-    const paid = state.project.expenses
+    if (!activeProject) return { paid: 0, owes: 0, balance: 0 };
+
+    const paid = activeProject.expenses
       .filter((e: Expense) => e.paidBy === userId)
       .reduce((sum: number, e: Expense) => sum + e.amount, 0);
 
-    const owes = state.project.expenses.reduce((sum: number, e: Expense) => {
+    const owes = activeProject.expenses.reduce((sum: number, e: Expense) => {
       const share = e.shares.find((s: ExpenseShare) => s.userId === userId);
       return sum + (share?.amount || 0);
     }, 0);
@@ -181,7 +263,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const getExpensesByMonth = () => {
     const byMonth = new Map<string, Expense[]>();
 
-    state.project.expenses.forEach((expense: Expense) => {
+    if (!activeProject) return byMonth;
+
+    activeProject.expenses.forEach((expense: Expense) => {
       const date = new Date(expense.date);
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
@@ -199,6 +283,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       value={{
         state,
         dispatch,
+        activeProject,
+        createProject,
+        deleteProject,
+        selectProject,
         addUser,
         removeUser,
         addExpense,

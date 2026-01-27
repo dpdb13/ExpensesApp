@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useApp } from './context/AppContext';
+import { ProjectList } from './components/ProjectList';
 import { ProjectHeader } from './components/ProjectHeader';
 import { UserManager } from './components/UserManager';
 import { ExpenseForm } from './components/ExpenseForm';
@@ -10,7 +12,16 @@ import './App.css';
 type Tab = 'gastos' | 'participantes' | 'resumen' | 'mensual';
 
 function App() {
+  const { activeProject } = useApp();
   const [activeTab, setActiveTab] = useState<Tab>('gastos');
+
+  if (!activeProject) {
+    return (
+      <div className="app">
+        <ProjectList />
+      </div>
+    );
+  }
 
   return (
     <div className="app">
