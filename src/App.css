@@ -1,0 +1,532 @@
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Project Header */
+.project-header {
+  background: var(--surface);
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.header-title h1 {
+  font-size: 1.75rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.editable-title .edit-hint {
+  font-size: 1rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.editable-title:hover .edit-hint {
+  opacity: 0.5;
+}
+
+.header-input {
+  font-size: 1.5rem;
+  font-weight: 600;
+  max-width: 300px;
+}
+
+.header-currency {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.header-currency label {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.header-currency .input {
+  width: auto;
+}
+
+/* Tabs */
+.tabs {
+  background: var(--surface);
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+  padding: 0 1rem;
+  overflow-x: auto;
+}
+
+.tab {
+  padding: 1rem 1.5rem;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  color: var(--text-primary);
+}
+
+.tab.active {
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+}
+
+/* Content */
+.content {
+  flex: 1;
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.gastos-view {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+
+@media (max-width: 900px) {
+  .gastos-view {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* User Manager */
+.user-manager {
+  background: var(--surface);
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.add-user-form {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.add-user-form .input {
+  flex: 1;
+}
+
+.user-list {
+  list-style: none;
+}
+
+.user-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.user-item:last-child {
+  border-bottom: none;
+}
+
+.user-name {
+  font-weight: 500;
+}
+
+/* Expense Form */
+.expense-form {
+  background: var(--surface);
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1rem;
+}
+
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.checkbox-label,
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.5rem 0.75rem;
+  background: var(--background);
+  border-radius: 6px;
+  transition: background-color 0.2s;
+}
+
+.checkbox-label:hover,
+.radio-label:hover {
+  background: var(--border-color);
+}
+
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.percentage-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.percentage-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.percentage-name {
+  min-width: 100px;
+  font-weight: 500;
+}
+
+.percentage-symbol {
+  color: var(--text-secondary);
+}
+
+.percentage-amount {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.percentage-total {
+  padding: 0.75rem;
+  border-radius: 6px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.percentage-total.valid {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--success-color);
+}
+
+.percentage-total.invalid {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger-color);
+}
+
+/* Expense List */
+.expense-list {
+  background: var(--surface);
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.expenses {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.expense-card {
+  background: var(--background);
+  padding: 1.25rem;
+  border-radius: 8px;
+  position: relative;
+}
+
+.expense-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+}
+
+.expense-amount {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary-color);
+}
+
+.expense-date {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.expense-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.expense-details {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.expense-payer {
+  margin-bottom: 0.5rem;
+}
+
+.shares-label {
+  margin-right: 0.25rem;
+}
+
+.share-list {
+  list-style: none;
+  margin-top: 0.25rem;
+  padding-left: 1rem;
+}
+
+.share-list li {
+  padding: 0.25rem 0;
+}
+
+.expense-delete {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.expense-card:hover .expense-delete {
+  opacity: 1;
+}
+
+/* Summary */
+.summary {
+  background: var(--surface);
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.summary-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+  border-radius: 12px;
+  color: white;
+  margin-bottom: 0.75rem;
+}
+
+.summary-label {
+  font-size: 1rem;
+}
+
+.summary-amount {
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.summary-count {
+  text-align: center;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+.user-balances {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.user-balance-card {
+  background: var(--background);
+  padding: 1.25rem;
+  border-radius: 8px;
+}
+
+.balance-name {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.balance-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.balance-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.875rem;
+}
+
+.balance-row.balance-total {
+  font-weight: 600;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.balance-row.positive {
+  color: var(--success-color);
+}
+
+.balance-row.negative {
+  color: var(--danger-color);
+}
+
+.balance-status {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: center;
+}
+
+.balance-status.positive {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--success-color);
+}
+
+.balance-status.negative {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger-color);
+}
+
+/* Monthly Summary */
+.monthly-summary {
+  background: var(--surface);
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.month-section {
+  margin-bottom: 2rem;
+}
+
+.month-section:last-child {
+  margin-bottom: 0;
+}
+
+.month-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: var(--background);
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.month-name {
+  font-size: 1.125rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.month-total {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--primary-color);
+}
+
+.month-expenses {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.month-expense-item {
+  display: grid;
+  grid-template-columns: 70px 1fr auto auto;
+  gap: 1rem;
+  padding: 0.75rem;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.month-expense-item:last-child {
+  border-bottom: none;
+}
+
+.expense-item-date {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.expense-item-title {
+  font-weight: 500;
+}
+
+.expense-item-payer {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.expense-item-amount {
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+.month-stats {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .project-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .content {
+    padding: 1rem;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .month-expense-item {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+
+  .expense-item-title {
+    grid-column: 1 / -1;
+  }
+}
