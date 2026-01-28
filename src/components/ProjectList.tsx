@@ -1,20 +1,13 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { CreateGroup } from './CreateGroup';
 import { CURRENCIES } from '../types';
 
 export function ProjectList() {
-  const { state, createProject, selectProject } = useApp();
+  const { state, selectProject } = useApp();
+  const { user, signOut } = useAuth();
   const [isCreating, setIsCreating] = useState(false);
-  const [newProjectName, setNewProjectName] = useState('');
-
-  const handleCreate = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newProjectName.trim()) {
-      createProject(newProjectName.trim());
-      setNewProjectName('');
-      setIsCreating(false);
-    }
-  };
 
   const getCurrencySymbol = (code: string) => {
     const currency = CURRENCIES.find((c) => c.code === code);
@@ -27,73 +20,68 @@ export function ProjectList() {
     return project.expenses.reduce((sum, e) => sum + e.amount, 0);
   };
 
+  if (isCreating) {
+    return <CreateGroup onCancel={() => setIsCreating(false)} />;
+  }
+
   return (
     <div className="project-list-container">
       <header className="project-list-header">
-        <h1>Mis Proyectos</h1>
-        <p className="project-list-subtitle">Selecciona un proyecto o crea uno nuevo</p>
+        <h1>Mis Grupos</h1>
+        <p className="project-list-subtitle">Gestiona tus gastos compartidos</p>
+        <div className="user-menu">
+          <span className="user-email">{user?.email}</span>
+          <button className="btn-logout" onClick={signOut}>
+            Salir
+          </button>
+        </div>
       </header>
 
       <div className="project-list">
-        {state.projects.length === 0 && !isCreating && (
+        {state.projects.length === 0 && (
           <div className="empty-projects">
-            <p>No tienes proyectos todavia.</p>
-            <p>Crea tu primer proyecto para empezar a registrar gastos.</p>
+            <div className="empty-icon">💰</div>
+            <p>No tienes grupos todavía</p>
+            <p>Crea tu primer grupo para empezar a dividir gastos</p>
           </div>
         )}
 
-        {state.projects.map((project) => (
+        {state.projects.map((project, index) => (
           <button
             key={project.id}
             className="project-card"
             onClick={() => selectProject(project.id)}
+            style={{ animationDelay: `${index * 0.05}s` }}
           >
-            <div className="project-card-header">
-              <h2 className="project-card-name">{project.name}</h2>
-              <span className="project-card-total">
-                {getCurrencySymbol(project.defaultCurrency)}
-                {getProjectTotal(project.id).toFixed(2)}
-              </span>
+            <div className={`project-card-icon project-card-icon-${(index % 6) + 1}`}>
+              {project.icon || '✈️'}
             </div>
-            <div className="project-card-details">
-              <span>{project.users.length} participantes</span>
-              <span>{project.expenses.length} gastos</span>
+            <div className="project-card-content">
+              <h2 className="project-card-name">{project.name}</h2>
+              <div className="project-card-details">
+                <span className="project-card-stat">
+                  <span className="stat-icon">👥</span>
+                  {project.users.length}
+                </span>
+                <span className="project-card-stat">
+                  <span className="stat-icon">📝</span>
+                  {project.expenses.length}
+                </span>
+              </div>
+            </div>
+            <div className="project-card-total-container">
+              <span className="project-card-total">
+                {getCurrencySymbol(project.defaultCurrency)}{getProjectTotal(project.id).toFixed(0)}
+              </span>
+              <span className="project-card-arrow">→</span>
             </div>
           </button>
         ))}
 
-        {isCreating ? (
-          <form onSubmit={handleCreate} className="new-project-form">
-            <input
-              type="text"
-              value={newProjectName}
-              onChange={(e) => setNewProjectName(e.target.value)}
-              placeholder="Nombre del proyecto (ej: Viaje a Paris)"
-              className="input"
-              autoFocus
-            />
-            <div className="new-project-buttons">
-              <button type="submit" className="btn btn-primary" disabled={!newProjectName.trim()}>
-                Crear
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => {
-                  setIsCreating(false);
-                  setNewProjectName('');
-                }}
-              >
-                Cancelar
-              </button>
-            </div>
-          </form>
-        ) : (
-          <button className="add-project-btn" onClick={() => setIsCreating(true)}>
-            <span className="add-icon">+</span>
-            <span>Nuevo Proyecto</span>
-          </button>
-        )}
+        <button className="add-project-btn" onClick={() => setIsCreating(true)}>
+          <span className="add-icon">+</span>
+          <span>Nuevo Grupo</span>
+        </button>
       </div>
     </div>
   );

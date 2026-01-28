@@ -2,8 +2,11 @@ import { useApp } from '../context/AppContext';
 import { CURRENCIES } from '../types';
 
 export function MonthlySummary() {
-  const { state, getExpensesByMonth, getUserById } = useApp();
-  const { defaultCurrency } = state.project;
+  const { activeProject, getExpensesByMonth, getUserById } = useApp();
+
+  if (!activeProject) return null;
+
+  const { defaultCurrency } = activeProject;
 
   const expensesByMonth = getExpensesByMonth();
 

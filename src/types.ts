@@ -9,6 +9,9 @@ export interface ExpenseShare {
   amount: number;
 }
 
+export type ExpenseType = 'one-off' | 'recurring';
+export type RecurringFrequency = 'weekly' | 'monthly' | 'yearly';
+
 export interface Expense {
   id: string;
   amount: number;
@@ -18,11 +21,15 @@ export interface Expense {
   paidBy: string;
   shares: ExpenseShare[];
   splitType: 'equal' | 'custom';
+  expenseType: ExpenseType;
+  recurringFrequency?: RecurringFrequency;
+  recurringStartDate?: string;
 }
 
 export interface Project {
   id: string;
   name: string;
+  icon: string;
   users: User[];
   expenses: Expense[];
   defaultCurrency: string;

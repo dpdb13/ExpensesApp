@@ -1,9 +1,14 @@
+import { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { CURRENCIES } from '../types';
+import { CURRENCIES, type ExpenseShare } from '../types';
 
 export function ExpenseList() {
-  const { state, getUserById, removeExpense } = useApp();
-  const { expenses } = state.project;
+  const { activeProject, getUserById, removeExpense } = useApp();
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  if (!activeProject) return null;
+
+  const { expenses, users } = activeProject;
 
   const getCurrencySymbol = (code: string) => {
     return CURRENCIES.find((c) => c.code === code)?.symbol || code;
@@ -13,9 +18,35 @@ export function ExpenseList() {
     const date = new Date(dateStr);
     return date.toLocaleDateString('es-ES', {
       day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
+      month: 'short',
     });
+  };
+
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  const getAvatarClass = (userId: string) => {
+    const index = users.findIndex((u) => u.id === userId);
+    return `avatar avatar-sm avatar-${((index >= 0 ? index : 0) % 8) + 1}`;
+  };
+
+  const handleDeleteClick = (expenseId: string) => {
+    setDeleteConfirmId(expenseId);
+  };
+
+  const handleConfirmDelete = (expenseId: string) => {
+    removeExpense(expenseId);
+    setDeleteConfirmId(null);
+  };
+
+  const handleCancelDelete = () => {
+    setDeleteConfirmId(null);
   };
 
   const sortedExpenses = [...expenses].sort(
@@ -26,7 +57,10 @@ export function ExpenseList() {
     return (
       <div className="expense-list">
         <h3>Gastos</h3>
-        <p className="empty-message">No hay gastos registrados todavía.</p>
+        <div className="empty-message">
+          <p>No hay gastos registrados</p>
+          <p>Añade tu primer gasto arriba</p>
+        </div>
       </div>
     );
   }
@@ -38,50 +72,72 @@ export function ExpenseList() {
       <div className="expenses">
         {sortedExpenses.map((expense) => {
           const payer = getUserById(expense.paidBy);
+          const isConfirming = deleteConfirmId === expense.id;
+
           return (
-            <div key={expense.id} className="expense-card">
-              <div className="expense-header">
-                <div className="expense-amount">
-                  {getCurrencySymbol(expense.currency)} {expense.amount.toFixed(2)}
+            <div key={expense.id} className={`expense-card ${isConfirming ? 'confirming' : ''}`}>
+              <div className="expense-card-main">
+                <div className={getAvatarClass(expense.paidBy)}>
+                  {payer ? getInitials(payer.name) : '?'}
                 </div>
-                <div className="expense-date">{formatDate(expense.date)}</div>
-              </div>
-
-              <div className="expense-title">{expense.title}</div>
-
-              <div className="expense-details">
-                <div className="expense-payer">
-                  Pagado por: <strong>{payer?.name || 'Desconocido'}</strong>
+                <div className="expense-card-content">
+                  <div className="expense-card-title">{expense.title}</div>
+                  <div className="expense-card-meta">
+                    <span className="expense-card-payer">{payer?.name || 'Desconocido'}</span>
+                    <span className="expense-card-date">{formatDate(expense.date)}</span>
+                  </div>
                 </div>
-
-                <div className="expense-shares">
-                  <span className="shares-label">Reparto:</span>
-                  {expense.splitType === 'equal' ? (
-                    <span className="share-equal">
-                      Partes iguales entre {expense.shares.length} personas
-                    </span>
+                <div className="expense-card-right">
+                  <div className="expense-card-amount">
+                    {getCurrencySymbol(expense.currency)}{expense.amount.toFixed(2)}
+                  </div>
+                  {isConfirming ? (
+                    <div className="expense-card-confirm">
+                      <button
+                        onClick={() => handleConfirmDelete(expense.id)}
+                        className="btn-confirm-yes"
+                        title="Sí, eliminar"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        onClick={handleCancelDelete}
+                        className="btn-confirm-no"
+                        title="Cancelar"
+                      >
+                        ✗
+                      </button>
+                    </div>
                   ) : (
-                    <ul className="share-list">
-                      {expense.shares.map((share) => {
-                        const user = getUserById(share.userId);
-                        return (
-                          <li key={share.userId}>
-                            {user?.name}: {share.percentage.toFixed(1)}%
-                            ({getCurrencySymbol(expense.currency)} {share.amount.toFixed(2)})
-                          </li>
-                        );
-                      })}
-                    </ul>
+                    <button
+                      onClick={() => handleDeleteClick(expense.id)}
+                      className="expense-card-delete"
+                      title="Eliminar gasto"
+                    >
+                      ×
+                    </button>
                   )}
                 </div>
               </div>
 
-              <button
-                onClick={() => removeExpense(expense.id)}
-                className="btn btn-danger btn-small expense-delete"
-              >
-                Eliminar
-              </button>
+              <div className="expense-card-split">
+                {expense.splitType === 'equal' ? (
+                  <span className="expense-split-info">
+                    Dividido entre {expense.shares.length} persona{expense.shares.length !== 1 ? 's' : ''}
+                  </span>
+                ) : (
+                  <div className="expense-split-custom">
+                    {expense.shares.map((share: ExpenseShare) => {
+                      const user = getUserById(share.userId);
+                      return (
+                        <span key={share.userId} className="expense-share-item">
+                          {user?.name}: {getCurrencySymbol(expense.currency)}{share.amount.toFixed(2)}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}

@@ -1,277 +1,449 @@
-import { createContext, useContext, useReducer, useEffect, type ReactNode, type Dispatch } from 'react';
-import type { Project, User, Expense, ExpenseShare, AppData } from '../types';
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { supabase } from '../lib/supabase';
+import { useAuth } from './AuthContext';
+import type { Expense, ExpenseShare } from '../types';
+
+// Tipos para la app
+interface Project {
+  id: string;
+  name: string;
+  icon: string;
+  defaultCurrency: string;
+  users: User[];
+  expenses: Expense[];
+}
+
+interface User {
+  id: string;
+  name: string;
+}
 
 interface AppState {
   projects: Project[];
   activeProjectId: string | null;
-}
-
-type Action =
-  | { type: 'SET_DATA'; payload: AppData }
-  | { type: 'CREATE_PROJECT'; payload: Project }
-  | { type: 'DELETE_PROJECT'; payload: string }
-  | { type: 'SELECT_PROJECT'; payload: string | null }
-  | { type: 'ADD_USER'; payload: User }
-  | { type: 'REMOVE_USER'; payload: string }
-  | { type: 'ADD_EXPENSE'; payload: Expense }
-  | { type: 'REMOVE_EXPENSE'; payload: string }
-  | { type: 'UPDATE_PROJECT_NAME'; payload: string }
-  | { type: 'SET_DEFAULT_CURRENCY'; payload: string };
-
-const initialState: AppState = {
-  projects: [],
-  activeProjectId: null,
-};
-
-function updateActiveProject(state: AppState, updater: (project: Project) => Project): AppState {
-  if (!state.activeProjectId) return state;
-
-  return {
-    ...state,
-    projects: state.projects.map((p) =>
-      p.id === state.activeProjectId ? updater(p) : p
-    ),
-  };
-}
-
-function appReducer(state: AppState, action: Action): AppState {
-  switch (action.type) {
-    case 'SET_DATA':
-      return {
-        projects: action.payload.projects,
-        activeProjectId: action.payload.activeProjectId,
-      };
-
-    case 'CREATE_PROJECT':
-      return {
-        ...state,
-        projects: [...state.projects, action.payload],
-        activeProjectId: action.payload.id,
-      };
-
-    case 'DELETE_PROJECT': {
-      const newProjects = state.projects.filter((p) => p.id !== action.payload);
-      return {
-        ...state,
-        projects: newProjects,
-        activeProjectId: state.activeProjectId === action.payload ? null : state.activeProjectId,
-      };
-    }
-
-    case 'SELECT_PROJECT':
-      return {
-        ...state,
-        activeProjectId: action.payload,
-      };
-
-    case 'ADD_USER':
-      return updateActiveProject(state, (project) => ({
-        ...project,
-        users: [...project.users, action.payload],
-      }));
-
-    case 'REMOVE_USER':
-      return updateActiveProject(state, (project) => ({
-        ...project,
-        users: project.users.filter((u) => u.id !== action.payload),
-        expenses: project.expenses.filter((e) => e.paidBy !== action.payload),
-      }));
-
-    case 'ADD_EXPENSE':
-      return updateActiveProject(state, (project) => ({
-        ...project,
-        expenses: [...project.expenses, action.payload],
-      }));
-
-    case 'REMOVE_EXPENSE':
-      return updateActiveProject(state, (project) => ({
-        ...project,
-        expenses: project.expenses.filter((e) => e.id !== action.payload),
-      }));
-
-    case 'UPDATE_PROJECT_NAME':
-      return updateActiveProject(state, (project) => ({
-        ...project,
-        name: action.payload,
-      }));
-
-    case 'SET_DEFAULT_CURRENCY':
-      return updateActiveProject(state, (project) => ({
-        ...project,
-        defaultCurrency: action.payload,
-      }));
-
-    default:
-      return state;
-  }
+  loading: boolean;
+  lastDeletedExpense: Expense | null;
 }
 
 interface AppContextType {
   state: AppState;
-  dispatch: Dispatch<Action>;
   activeProject: Project | null;
-  createProject: (name: string) => void;
-  deleteProject: (id: string) => void;
+  createProject: (name: string, icon?: string, currency?: string, participants?: string[]) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
   selectProject: (id: string | null) => void;
-  addUser: (name: string) => void;
-  removeUser: (id: string) => void;
-  addExpense: (expense: Omit<Expense, 'id'>) => void;
-  removeExpense: (id: string) => void;
-  updateProjectName: (name: string) => void;
-  setDefaultCurrency: (currency: string) => void;
+  addUser: (name: string) => Promise<void>;
+  removeUser: (id: string) => Promise<void>;
+  addExpense: (expense: Omit<Expense, 'id'>) => Promise<void>;
+  removeExpense: (id: string) => Promise<void>;
+  undoDeleteExpense: () => Promise<void>;
+  lastDeletedExpense: Expense | null;
+  updateProjectName: (name: string) => Promise<void>;
+  updateProjectIcon: (icon: string) => Promise<void>;
+  setDefaultCurrency: (currency: string) => Promise<void>;
   getUserById: (id: string) => User | undefined;
   getTotalExpenses: () => number;
   getUserBalance: (userId: string) => { paid: number; owes: number; balance: number };
   getExpensesByMonth: () => Map<string, Expense[]>;
+  refreshData: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'expenses-app-data';
-
-function migrateOldData(): AppState | null {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (!stored) return null;
-
-  try {
-    const parsed = JSON.parse(stored);
-
-    if (parsed.projects && Array.isArray(parsed.projects)) {
-      return {
-        projects: parsed.projects,
-        activeProjectId: parsed.activeProjectId || null,
-      };
-    }
-
-    if (parsed.id && parsed.name && parsed.users) {
-      const migratedProject: Project = {
-        id: parsed.id,
-        name: parsed.name,
-        users: parsed.users || [],
-        expenses: parsed.expenses || [],
-        defaultCurrency: parsed.defaultCurrency || 'EUR',
-      };
-      return {
-        projects: [migratedProject],
-        activeProjectId: null,
-      };
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(appReducer, initialState, () => {
-    const migrated = migrateOldData();
-    return migrated || initialState;
+  const { user } = useAuth();
+  const [state, setState] = useState<AppState>({
+    projects: [],
+    activeProjectId: null,
+    loading: true,
+    lastDeletedExpense: null,
   });
-
-  useEffect(() => {
-    const dataToSave: AppData = {
-      projects: state.projects,
-      activeProjectId: state.activeProjectId,
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
-  }, [state]);
 
   const activeProject = state.activeProjectId
     ? state.projects.find((p) => p.id === state.activeProjectId) || null
     : null;
 
-  const createProject = (name: string) => {
-    const newProject: Project = {
-      id: crypto.randomUUID(),
-      name,
-      users: [],
-      expenses: [],
-      defaultCurrency: 'EUR',
-    };
-    dispatch({ type: 'CREATE_PROJECT', payload: newProject });
+  // Cargar proyectos del usuario
+  const loadProjects = useCallback(async () => {
+    if (!user) {
+      setState(prev => ({ ...prev, projects: [], loading: false }));
+      return;
+    }
+
+    try {
+      // Cargar proyectos donde el usuario es creador
+      const { data: projects, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('created_by', user.id);
+
+      if (error) throw error;
+
+      // Para cada proyecto, cargar miembros y gastos
+      const projectsWithData: Project[] = await Promise.all(
+        (projects || []).map(async (project) => {
+          // Cargar miembros
+          const { data: members } = await supabase
+            .from('project_members')
+            .select('*')
+            .eq('project_id', project.id);
+
+          // Cargar gastos
+          const { data: expenses } = await supabase
+            .from('expenses')
+            .select('*')
+            .eq('project_id', project.id);
+
+          // Para cada gasto, cargar shares
+          const expensesWithShares: Expense[] = await Promise.all(
+            (expenses || []).map(async (expense) => {
+              const { data: shares } = await supabase
+                .from('expense_shares')
+                .select('*')
+                .eq('expense_id', expense.id);
+
+              return {
+                id: expense.id,
+                amount: parseFloat(expense.amount),
+                title: expense.title,
+                currency: expense.currency,
+                date: expense.date,
+                paidBy: expense.paid_by_member_id,
+                shares: (shares || []).map(s => ({
+                  userId: s.member_id,
+                  percentage: parseFloat(s.percentage),
+                  amount: parseFloat(s.amount),
+                })),
+                splitType: expense.split_type as 'equal' | 'custom',
+                expenseType: expense.expense_type as 'one-off' | 'recurring',
+                recurringFrequency: expense.recurring_frequency,
+                recurringStartDate: expense.recurring_start_date,
+              };
+            })
+          );
+
+          return {
+            id: project.id,
+            name: project.name,
+            icon: project.icon || '✈️',
+            defaultCurrency: project.default_currency || 'EUR',
+            users: (members || []).map(m => ({
+              id: m.id,
+              name: m.participant_name,
+            })),
+            expenses: expensesWithShares,
+          };
+        })
+      );
+
+      setState(prev => ({ ...prev, projects: projectsWithData, loading: false }));
+    } catch (error) {
+      console.error('Error loading projects:', error);
+      setState(prev => ({ ...prev, loading: false }));
+    }
+  }, [user]);
+
+  useEffect(() => {
+    loadProjects();
+  }, [loadProjects]);
+
+  const refreshData = async () => {
+    await loadProjects();
   };
 
-  const deleteProject = (id: string) => {
-    dispatch({ type: 'DELETE_PROJECT', payload: id });
+  const createProject = async (name: string, icon: string = '✈️', currency: string = 'EUR', participants: string[] = []) => {
+    if (!user) return;
+
+    try {
+      // Crear proyecto
+      const { data: project, error: projectError } = await supabase
+        .from('projects')
+        .insert({
+          name,
+          icon,
+          default_currency: currency,
+          created_by: user.id,
+        })
+        .select()
+        .single();
+
+      if (projectError) throw projectError;
+
+      // Añadir participantes
+      if (participants.length > 0) {
+        const membersToInsert = participants.map(p => ({
+          project_id: project.id,
+          participant_name: p,
+          user_id: null,
+        }));
+
+        await supabase.from('project_members').insert(membersToInsert);
+      }
+
+      await loadProjects();
+      setState(prev => ({ ...prev, activeProjectId: project.id }));
+    } catch (error) {
+      console.error('Error creating project:', error);
+    }
+  };
+
+  const deleteProject = async (id: string) => {
+    try {
+      const { error } = await supabase.from('projects').delete().eq('id', id);
+      if (error) throw error;
+
+      setState(prev => ({
+        ...prev,
+        projects: prev.projects.filter(p => p.id !== id),
+        activeProjectId: prev.activeProjectId === id ? null : prev.activeProjectId,
+      }));
+    } catch (error) {
+      console.error('Error deleting project:', error);
+    }
   };
 
   const selectProject = (id: string | null) => {
-    dispatch({ type: 'SELECT_PROJECT', payload: id });
+    setState(prev => ({ ...prev, activeProjectId: id }));
   };
 
-  const addUser = (name: string) => {
-    const newUser: User = {
-      id: crypto.randomUUID(),
-      name,
-    };
-    dispatch({ type: 'ADD_USER', payload: newUser });
+  const addUser = async (name: string) => {
+    if (!activeProject) return;
+
+    try {
+      const { data: member, error } = await supabase
+        .from('project_members')
+        .insert({
+          project_id: activeProject.id,
+          participant_name: name,
+          user_id: null,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setState(prev => ({
+        ...prev,
+        projects: prev.projects.map(p =>
+          p.id === activeProject.id
+            ? { ...p, users: [...p.users, { id: member.id, name: member.participant_name }] }
+            : p
+        ),
+      }));
+    } catch (error) {
+      console.error('Error adding user:', error);
+    }
   };
 
-  const removeUser = (id: string) => {
-    dispatch({ type: 'REMOVE_USER', payload: id });
+  const removeUser = async (id: string) => {
+    if (!activeProject) return;
+
+    try {
+      const { error } = await supabase.from('project_members').delete().eq('id', id);
+      if (error) throw error;
+
+      setState(prev => ({
+        ...prev,
+        projects: prev.projects.map(p =>
+          p.id === activeProject.id
+            ? {
+                ...p,
+                users: p.users.filter(u => u.id !== id),
+                expenses: p.expenses.filter(e => e.paidBy !== id),
+              }
+            : p
+        ),
+      }));
+    } catch (error) {
+      console.error('Error removing user:', error);
+    }
   };
 
-  const addExpense = (expense: Omit<Expense, 'id'>) => {
-    const newExpense: Expense = {
-      ...expense,
-      id: crypto.randomUUID(),
-    };
-    dispatch({ type: 'ADD_EXPENSE', payload: newExpense });
+  const addExpense = async (expense: Omit<Expense, 'id'>) => {
+    if (!activeProject || !user) return;
+
+    try {
+      // Crear gasto
+      const { data: newExpense, error: expenseError } = await supabase
+        .from('expenses')
+        .insert({
+          project_id: activeProject.id,
+          title: expense.title,
+          amount: expense.amount,
+          currency: expense.currency,
+          date: expense.date,
+          paid_by_member_id: expense.paidBy,
+          split_type: expense.splitType,
+          expense_type: expense.expenseType || 'one-off',
+          recurring_frequency: expense.recurringFrequency,
+          recurring_start_date: expense.recurringStartDate,
+          created_by: user.id,
+        })
+        .select()
+        .single();
+
+      if (expenseError) throw expenseError;
+
+      // Crear shares
+      const sharesToInsert = expense.shares.map(share => ({
+        expense_id: newExpense.id,
+        member_id: share.userId,
+        percentage: share.percentage,
+        amount: share.amount,
+      }));
+
+      await supabase.from('expense_shares').insert(sharesToInsert);
+
+      // Actualizar estado local
+      const fullExpense: Expense = {
+        ...expense,
+        id: newExpense.id,
+      };
+
+      setState(prev => ({
+        ...prev,
+        projects: prev.projects.map(p =>
+          p.id === activeProject.id
+            ? { ...p, expenses: [...p.expenses, fullExpense] }
+            : p
+        ),
+      }));
+    } catch (error) {
+      console.error('Error adding expense:', error);
+    }
   };
 
-  const removeExpense = (id: string) => {
-    dispatch({ type: 'REMOVE_EXPENSE', payload: id });
+  const removeExpense = async (id: string) => {
+    if (!activeProject) return;
+
+    // Guardar para undo
+    const expense = activeProject.expenses.find(e => e.id === id);
+    if (expense) {
+      setState(prev => ({ ...prev, lastDeletedExpense: expense }));
+    }
+
+    try {
+      const { error } = await supabase.from('expenses').delete().eq('id', id);
+      if (error) throw error;
+
+      setState(prev => ({
+        ...prev,
+        projects: prev.projects.map(p =>
+          p.id === activeProject.id
+            ? { ...p, expenses: p.expenses.filter(e => e.id !== id) }
+            : p
+        ),
+      }));
+    } catch (error) {
+      console.error('Error removing expense:', error);
+    }
   };
 
-  const updateProjectName = (name: string) => {
-    dispatch({ type: 'UPDATE_PROJECT_NAME', payload: name });
+  const undoDeleteExpense = async () => {
+    if (!state.lastDeletedExpense) return;
+
+    const { id, ...expenseData } = state.lastDeletedExpense;
+    await addExpense(expenseData);
+    setState(prev => ({ ...prev, lastDeletedExpense: null }));
   };
 
-  const setDefaultCurrency = (currency: string) => {
-    dispatch({ type: 'SET_DEFAULT_CURRENCY', payload: currency });
+  const updateProjectName = async (name: string) => {
+    if (!activeProject) return;
+
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({ name })
+        .eq('id', activeProject.id);
+
+      if (error) throw error;
+
+      setState(prev => ({
+        ...prev,
+        projects: prev.projects.map(p =>
+          p.id === activeProject.id ? { ...p, name } : p
+        ),
+      }));
+    } catch (error) {
+      console.error('Error updating project name:', error);
+    }
+  };
+
+  const updateProjectIcon = async (icon: string) => {
+    if (!activeProject) return;
+
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({ icon })
+        .eq('id', activeProject.id);
+
+      if (error) throw error;
+
+      setState(prev => ({
+        ...prev,
+        projects: prev.projects.map(p =>
+          p.id === activeProject.id ? { ...p, icon } : p
+        ),
+      }));
+    } catch (error) {
+      console.error('Error updating project icon:', error);
+    }
+  };
+
+  const setDefaultCurrency = async (currency: string) => {
+    if (!activeProject) return;
+
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({ default_currency: currency })
+        .eq('id', activeProject.id);
+
+      if (error) throw error;
+
+      setState(prev => ({
+        ...prev,
+        projects: prev.projects.map(p =>
+          p.id === activeProject.id ? { ...p, defaultCurrency: currency } : p
+        ),
+      }));
+    } catch (error) {
+      console.error('Error updating currency:', error);
+    }
   };
 
   const getUserById = (id: string) => {
-    return activeProject?.users.find((u: User) => u.id === id);
+    return activeProject?.users.find(u => u.id === id);
   };
 
   const getTotalExpenses = () => {
     if (!activeProject) return 0;
-    return activeProject.expenses.reduce((sum: number, e: Expense) => sum + e.amount, 0);
+    return activeProject.expenses.reduce((sum, e) => sum + e.amount, 0);
   };
 
   const getUserBalance = (userId: string) => {
     if (!activeProject) return { paid: 0, owes: 0, balance: 0 };
 
     const paid = activeProject.expenses
-      .filter((e: Expense) => e.paidBy === userId)
-      .reduce((sum: number, e: Expense) => sum + e.amount, 0);
+      .filter(e => e.paidBy === userId)
+      .reduce((sum, e) => sum + e.amount, 0);
 
-    const owes = activeProject.expenses.reduce((sum: number, e: Expense) => {
+    const owes = activeProject.expenses.reduce((sum, e) => {
       const share = e.shares.find((s: ExpenseShare) => s.userId === userId);
       return sum + (share?.amount || 0);
     }, 0);
 
-    return {
-      paid,
-      owes,
-      balance: paid - owes,
-    };
+    return { paid, owes, balance: paid - owes };
   };
 
   const getExpensesByMonth = () => {
     const byMonth = new Map<string, Expense[]>();
-
     if (!activeProject) return byMonth;
 
-    activeProject.expenses.forEach((expense: Expense) => {
+    activeProject.expenses.forEach(expense => {
       const date = new Date(expense.date);
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-
-      if (!byMonth.has(key)) {
-        byMonth.set(key, []);
-      }
+      if (!byMonth.has(key)) byMonth.set(key, []);
       byMonth.get(key)!.push(expense);
     });
 
@@ -282,7 +454,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider
       value={{
         state,
-        dispatch,
         activeProject,
         createProject,
         deleteProject,
@@ -291,12 +462,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         removeUser,
         addExpense,
         removeExpense,
+        undoDeleteExpense,
+        lastDeletedExpense: state.lastDeletedExpense,
         updateProjectName,
+        updateProjectIcon,
         setDefaultCurrency,
         getUserById,
         getTotalExpenses,
         getUserBalance,
         getExpensesByMonth,
+        refreshData,
       }}
     >
       {children}
