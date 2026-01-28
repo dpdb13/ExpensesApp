@@ -1,4 +1,4 @@
-const CACHE_NAME = 'splitly-v11';
+const CACHE_NAME = 'splitly-v12';
 const urlsToCache = [
   '/ExpensesApp/',
   '/ExpensesApp/index.html',
