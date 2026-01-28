@@ -1,10 +1,10 @@
-const CACHE_NAME = 'expenses-app-v1';
+const CACHE_NAME = 'expenses-app-v2';
 const urlsToCache = [
   '/ExpensesApp/',
   '/ExpensesApp/index.html',
   '/ExpensesApp/manifest.json',
-  '/ExpensesApp/icon-192.png',
-  '/ExpensesApp/icon-512.png'
+  '/ExpensesApp/icon-192-v2.png',
+  '/ExpensesApp/icon-512-v2.png'
 ];
 
 // Instalar el service worker
