@@ -1,12 +1,13 @@
-const CACHE_NAME = 'expenses-app-v10';
+const CACHE_NAME = 'splitly-v11';
 const urlsToCache = [
   '/ExpensesApp/',
   '/ExpensesApp/index.html',
-  '/ExpensesApp/manifest-v10.json',
-  '/ExpensesApp/icon-192-v10.png',
-  '/ExpensesApp/icon-512-v10.png',
-  '/ExpensesApp/icon-maskable-192-v10.png',
-  '/ExpensesApp/icon-maskable-512-v10.png'
+  '/ExpensesApp/manifest-v11.json',
+  '/ExpensesApp/icon-192-v11.png',
+  '/ExpensesApp/icon-512-v11.png',
+  '/ExpensesApp/icon-maskable-192-v11.png',
+  '/ExpensesApp/icon-maskable-512-v11.png',
+  '/ExpensesApp/logo.png'
 ];
 
 // Instalar el service worker
