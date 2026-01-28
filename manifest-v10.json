@@ -2,7 +2,7 @@
   "name": "Splitly",
   "short_name": "Splitly",
   "description": "App para gestionar gastos compartidos entre amigos",
-  "start_url": "/ExpensesApp/",
+  "start_url": "/ExpensesApp/?app=splitly",
   "display": "standalone",
   "background_color": "#4a6670",
   "theme_color": "#4a6670",
