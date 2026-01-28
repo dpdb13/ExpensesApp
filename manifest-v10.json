@@ -1,6 +1,6 @@
 {
-  "name": "Gastos Compartidos",
-  "short_name": "Gastos",
+  "name": "Splitly",
+  "short_name": "Splitly",
   "description": "App para gestionar gastos compartidos entre amigos",
   "start_url": "/ExpensesApp/",
   "display": "standalone",
