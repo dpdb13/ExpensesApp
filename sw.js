@@ -1,4 +1,4 @@
-const CACHE_NAME = 'splitly-v13';
+const CACHE_NAME = 'splitly-v14';
 const STATIC_ASSETS = [
   '/ExpensesApp/',
   '/ExpensesApp/index.html',
@@ -30,8 +30,15 @@ self.addEventListener('activate', (event) => {
             .map((name) => caches.delete(name))
         );
       })
-      .then(() => self.clients.claim())
   );
+  self.clients.claim();
+});
+
+// Escuchar mensaje para activarse inmediatamente
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 // Fetch: diferentes estrategias según el tipo de recurso
