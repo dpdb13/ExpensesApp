@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import type { Expense, ExpenseShare } from '../types';
@@ -11,6 +11,8 @@ interface Project {
   defaultCurrency: string;
   users: User[];
   expenses: Expense[];
+  inviteCode: string | null;
+  isOwner: boolean;
 }
 
 interface User {
@@ -45,6 +47,8 @@ interface AppContextType {
   getUserBalance: (userId: string) => { paid: number; owes: number; balance: number };
   getExpensesByMonth: () => Map<string, Expense[]>;
   refreshData: () => Promise<void>;
+  generateInviteLink: () => Promise<string | null>;
+  joinProject: (inviteCode: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -58,9 +62,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     lastDeletedExpense: null,
   });
 
-  const activeProject = state.activeProjectId
-    ? state.projects.find((p) => p.id === state.activeProjectId) || null
-    : null;
+  const activeProject = useMemo(() =>
+    state.activeProjectId
+      ? state.projects.find((p) => p.id === state.activeProjectId) || null
+      : null,
+    [state.activeProjectId, state.projects]
+  );
 
   // Cargar proyectos del usuario
   const loadProjects = useCallback(async () => {
@@ -71,12 +78,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     try {
       // Cargar proyectos donde el usuario es creador
-      const { data: projects, error } = await supabase
+      const { data: ownedProjects, error: ownedError } = await supabase
         .from('projects')
         .select('*')
         .eq('created_by', user.id);
 
-      if (error) throw error;
+      if (ownedError) throw ownedError;
+
+      // Cargar proyectos compartidos con el usuario
+      const { data: sharedProjectIds } = await supabase
+        .from('project_shared_users')
+        .select('project_id')
+        .eq('user_id', user.id);
+
+      let sharedProjects: typeof ownedProjects = [];
+      if (sharedProjectIds && sharedProjectIds.length > 0) {
+        const { data } = await supabase
+          .from('projects')
+          .select('*')
+          .in('id', sharedProjectIds.map(p => p.project_id));
+        sharedProjects = data || [];
+      }
+
+      // Combinar proyectos propios y compartidos
+      const allProjectsRaw = [
+        ...(ownedProjects || []).map(p => ({ ...p, isOwner: true })),
+        ...(sharedProjects || []).map(p => ({ ...p, isOwner: false })),
+      ];
+
+      const projects = allProjectsRaw;
 
       // Para cada proyecto, cargar miembros y gastos
       const projectsWithData: Project[] = await Promise.all(
@@ -131,6 +161,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
               name: m.participant_name,
             })),
             expenses: expensesWithShares,
+            inviteCode: project.invite_code || null,
+            isOwner: project.isOwner,
           };
         })
       );
@@ -450,6 +482,70 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return new Map([...byMonth.entries()].sort((a, b) => b[0].localeCompare(a[0])));
   };
 
+  const generateInviteLink = async (): Promise<string | null> => {
+    if (!activeProject) return null;
+
+    try {
+      // Si ya tiene código, devolverlo
+      if (activeProject.inviteCode) {
+        return `${window.location.origin}/ExpensesApp/?join=${activeProject.inviteCode}`;
+      }
+
+      // Generar código único de 8 caracteres
+      const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+
+      const { error } = await supabase
+        .from('projects')
+        .update({ invite_code: code })
+        .eq('id', activeProject.id);
+
+      if (error) throw error;
+
+      // Actualizar estado local
+      setState(prev => ({
+        ...prev,
+        projects: prev.projects.map(p =>
+          p.id === activeProject.id ? { ...p, inviteCode: code } : p
+        ),
+      }));
+
+      return `${window.location.origin}/ExpensesApp/?join=${code}`;
+    } catch (error) {
+      console.error('Error generating invite link:', error);
+      return null;
+    }
+  };
+
+  const joinProject = async (inviteCode: string): Promise<{ success: boolean; error?: string }> => {
+    if (!user) return { success: false, error: 'Debes iniciar sesión' };
+
+    try {
+      // Usar función RPC que salta las restricciones RLS
+      const { data, error } = await supabase
+        .rpc('join_project_by_invite_code', { invite_code_input: inviteCode });
+
+      if (error) {
+        console.error('RPC error:', error);
+        return { success: false, error: 'Error al procesar la invitación' };
+      }
+
+      if (!data.success) {
+        return { success: false, error: data.error };
+      }
+
+      // Recargar proyectos
+      await loadProjects();
+
+      // Seleccionar el proyecto
+      setState(prev => ({ ...prev, activeProjectId: data.project_id }));
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error joining project:', error);
+      return { success: false, error: 'Error al unirse al proyecto' };
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -472,6 +568,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         getUserBalance,
         getExpensesByMonth,
         refreshData,
+        generateInviteLink,
+        joinProject,
       }}
     >
       {children}

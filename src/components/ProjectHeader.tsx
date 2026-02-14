@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useApp } from '../context/AppContext';
 import { CURRENCIES } from '../types';
 
@@ -10,16 +10,19 @@ export function ProjectHeader() {
     updateProjectName,
     updateProjectIcon,
     setDefaultCurrency,
-    selectProject,
     deleteProject,
     addUser,
     removeUser,
     undoDeleteExpense,
-    lastDeletedExpense
+    lastDeletedExpense,
+    generateInviteLink
   } = useApp();
 
   const [showSettings, setShowSettings] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareLink, setShareLink] = useState('');
+  const [shareCopied, setShareCopied] = useState(false);
   const [editName, setEditName] = useState('');
   const [editIcon, setEditIcon] = useState('');
   const [showIconPicker, setShowIconPicker] = useState(false);
@@ -30,12 +33,14 @@ export function ProjectHeader() {
   const { name, icon, defaultCurrency, users } = activeProject;
 
   const handleBack = () => {
-    selectProject(null);
+    window.history.back();
   };
 
   const handleDelete = () => {
     deleteProject(activeProject.id);
     setShowDeleteConfirm(false);
+    // Limpiar la entrada del historial para que no quede huérfana
+    window.history.replaceState({ screen: 'projects' }, '');
   };
 
   const openSettings = () => {
@@ -55,11 +60,38 @@ export function ProjectHeader() {
     setShowIconPicker(false);
   };
 
-  const handleAddParticipant = (e: React.FormEvent) => {
+  const handleAddParticipant = (e: FormEvent) => {
     e.preventDefault();
     if (newParticipant.trim()) {
       addUser(newParticipant.trim());
       setNewParticipant('');
+    }
+  };
+
+  const handleShare = async () => {
+    const link = await generateInviteLink();
+    if (link) {
+      setShareLink(link);
+      setShowShareModal(true);
+      setShareCopied(false);
+    }
+  };
+
+  const copyShareLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    } catch {
+      // Fallback para navegadores que no soportan clipboard API
+      const input = document.createElement('input');
+      input.value = shareLink;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
     }
   };
 
@@ -96,6 +128,14 @@ export function ProjectHeader() {
             title="Ajustes"
           >
             ⚙️
+          </button>
+
+          <button
+            className="btn-icon"
+            onClick={handleShare}
+            title="Compartir"
+          >
+            🔗
           </button>
 
           {showDeleteConfirm ? (
@@ -252,6 +292,45 @@ export function ProjectHeader() {
               >
                 Guardar cambios
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Compartir */}
+      {showShareModal && (
+        <div className="modal-overlay" onClick={() => setShowShareModal(false)}>
+          <div className="modal-content modal-small" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h4>Compartir proyecto</h4>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setShowShareModal(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <p className="share-description">
+                Comparte este enlace con tus amigos para que puedan unirse al proyecto y ver los gastos.
+              </p>
+
+              <div className="share-link-container">
+                <input
+                  type="text"
+                  value={shareLink}
+                  readOnly
+                  className="input share-link-input"
+                />
+                <button
+                  className={`btn ${shareCopied ? 'btn-success' : 'btn-primary'}`}
+                  onClick={copyShareLink}
+                >
+                  {shareCopied ? '¡Copiado!' : 'Copiar'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -1934,6 +1934,48 @@
 }
 
 /* ============================================
+   EXIT CONFIRMATION MODAL
+   ============================================ */
+.exit-confirm-overlay {
+  align-items: center;
+  padding: 20px;
+}
+
+.exit-confirm-modal {
+  background: var(--surface);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+  max-width: 320px;
+  width: 100%;
+  text-align: center;
+  animation: scaleIn 0.2s ease-out;
+}
+
+.exit-confirm-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.exit-confirm-subtitle {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 0.85rem;
+  margin: 6px 0 0;
+}
+
+.exit-confirm-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.exit-confirm-actions .btn {
+  flex: 1;
+}
+
+/* ============================================
    RESPONSIVE - Desktop
    ============================================ */
 /* Mobile adjustments */
@@ -1971,5 +2013,233 @@
 
   .expense-item-payer {
     display: block;
+  }
+}
+
+/* Share Modal */
+.modal-small {
+  max-width: 400px;
+}
+
+.share-description {
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.share-link-container {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.share-link-input {
+  flex: 1;
+  font-size: 0.85rem;
+}
+
+.btn-success {
+  background: var(--success-color);
+  color: var(--background);
+}
+
+/* Toast Notifications */
+.toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1rem 1.5rem;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  z-index: 1000;
+  animation: slideDown 0.3s ease;
+}
+
+.toast-success {
+  background: var(--success-color);
+  color: var(--background);
+}
+
+.toast-error {
+  background: var(--danger-color);
+  color: white;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* ============================================
+   RESPONSIVE IMPROVEMENTS
+   ============================================ */
+
+/* Extra small devices (phones in portrait) */
+@media (max-width: 360px) {
+  .project-header h1 {
+    font-size: 1.1rem;
+  }
+  
+  .tabs {
+    gap: 0.25rem;
+  }
+  
+  .tab {
+    padding: 0.6rem 0.8rem;
+    font-size: 0.8rem;
+  }
+  
+  .btn {
+    padding: 0.7rem 1rem;
+    font-size: 0.9rem;
+  }
+  
+  .expense-item {
+    padding: 0.75rem;
+  }
+  
+  .expense-item-amount {
+    font-size: 1rem;
+  }
+  
+  .summary-card {
+    padding: 1rem;
+  }
+  
+  .balance-amount {
+    font-size: 1.5rem;
+  }
+}
+
+/* Small devices (phones in landscape, small tablets) */
+@media (min-width: 480px) and (max-width: 767px) {
+  .participant-chip {
+    padding: 0.6rem 1rem;
+  }
+  
+  .add-participant-form {
+    flex-direction: row;
+  }
+  
+  .project-card {
+    padding: 1.25rem;
+  }
+}
+
+/* Tablet portrait */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .app {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  
+  .project-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+  
+  .summary-participants-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Desktop and large tablets */
+@media (min-width: 1024px) {
+  .app {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 1rem 2rem;
+  }
+  
+  .project-list-container {
+    padding: 2rem;
+  }
+  
+  .project-list {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.25rem;
+  }
+  
+  .expense-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+  
+  .summary-participants-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  
+  .create-group-container {
+    max-width: 500px;
+    margin: 0 auto;
+  }
+  
+  .auth-card {
+    max-width: 400px;
+  }
+}
+
+/* Hover states only for devices that support hover */
+@media (hover: hover) {
+  .btn:hover {
+    transform: translateY(-1px);
+  }
+  
+  .project-card:hover {
+    transform: translateY(-2px);
+  }
+  
+  .expense-item:hover {
+    background: var(--surface-hover);
+  }
+  
+  .participant-chip:hover {
+    background: var(--surface-hover);
+  }
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* High contrast mode improvements */
+@media (prefers-contrast: high) {
+  :root {
+    --border-color: #4A4A5A;
+    --text-secondary: #B8B8C8;
+  }
+}
+
+/* Touch-friendly targets */
+@media (pointer: coarse) {
+  .btn-icon {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  
+  .participant-remove {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  
+  .tab {
+    min-height: 44px;
   }
 }

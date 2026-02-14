@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useApp } from '../context/AppContext';
 import { CURRENCIES } from '../types';
 
@@ -18,7 +18,7 @@ export function CreateGroup({ onCancel }: CreateGroupProps) {
   const [newParticipant, setNewParticipant] = useState('');
   const [showIconPicker, setShowIconPicker] = useState(false);
 
-  const handleAddParticipant = (e: React.FormEvent) => {
+  const handleAddParticipant = (e: FormEvent) => {
     e.preventDefault();
     if (newParticipant.trim() && !participants.includes(newParticipant.trim())) {
       setParticipants([...participants, newParticipant.trim()]);

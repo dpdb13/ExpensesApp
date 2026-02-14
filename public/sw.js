@@ -1,53 +1,98 @@
-const CACHE_NAME = 'expenses-app-v1';
-const urlsToCache = [
+const CACHE_NAME = 'splitly-v15';
+const STATIC_ASSETS = [
   '/ExpensesApp/',
   '/ExpensesApp/index.html',
-  '/ExpensesApp/manifest.json',
-  '/ExpensesApp/icon-192.png',
-  '/ExpensesApp/icon-512.png'
+  '/ExpensesApp/manifest-v11.json',
+  '/ExpensesApp/icon-192-v11.png',
+  '/ExpensesApp/icon-512-v11.png',
+  '/ExpensesApp/icon-maskable-192-v11.png',
+  '/ExpensesApp/icon-maskable-512-v11.png',
+  '/ExpensesApp/logo.png'
 ];
 
-// Instalar el service worker
+// Instalar: cachear assets estáticos
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(urlsToCache))
+      .then((cache) => cache.addAll(STATIC_ASSETS))
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
-// Activar y limpiar caches antiguos
+// Activar: limpiar caches antiguos
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
+    caches.keys()
+      .then((cacheNames) => {
+        return Promise.all(
+          cacheNames
+            .filter((name) => name !== CACHE_NAME)
+            .map((name) => caches.delete(name))
+        );
+      })
   );
   self.clients.claim();
 });
 
-// Interceptar peticiones - Network first, fallback to cache
+// Escuchar mensaje para activarse inmediatamente
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// Fetch: diferentes estrategias según el tipo de recurso
 self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // Ignorar peticiones a Supabase (siempre online)
+  if (url.hostname.includes('supabase')) {
+    return;
+  }
+
+  // Para assets estáticos: Cache First
+  if (request.destination === 'image' ||
+      request.destination === 'font' ||
+      url.pathname.endsWith('.css') ||
+      url.pathname.endsWith('.js')) {
+    event.respondWith(
+      caches.match(request)
+        .then((cached) => {
+          if (cached) {
+            // Actualizar cache en segundo plano
+            fetch(request).then((response) => {
+              if (response.ok) {
+                caches.open(CACHE_NAME)
+                  .then((cache) => cache.put(request, response));
+              }
+            }).catch(() => {});
+            return cached;
+          }
+          return fetch(request).then((response) => {
+            if (response.ok) {
+              const clone = response.clone();
+              caches.open(CACHE_NAME)
+                .then((cache) => cache.put(request, clone));
+            }
+            return response;
+          });
+        })
+    );
+    return;
+  }
+
+  // Para HTML: Network First con fallback a cache
   event.respondWith(
-    fetch(event.request)
+    fetch(request)
       .then((response) => {
-        // Guardar en cache si es exitoso
-        if (response.status === 200) {
-          const responseClone = response.clone();
+        if (response.ok) {
+          const clone = response.clone();
           caches.open(CACHE_NAME)
-            .then((cache) => cache.put(event.request, responseClone));
+            .then((cache) => cache.put(request, clone));
         }
         return response;
       })
-      .catch(() => {
-        // Si falla la red, intentar desde cache
-        return caches.match(event.request);
-      })
+      .catch(() => caches.match(request))
   );
 });

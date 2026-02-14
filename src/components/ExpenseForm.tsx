@@ -2,7 +2,11 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { useApp } from '../context/AppContext';
 import { CURRENCIES, type ExpenseShare, type User, type ExpenseType, type RecurringFrequency } from '../types';
 
-export function ExpenseForm() {
+interface ExpenseFormProps {
+  onDirtyChange?: (dirty: boolean) => void;
+}
+
+export function ExpenseForm({ onDirtyChange }: ExpenseFormProps) {
   const { activeProject, addExpense } = useApp();
 
   if (!activeProject) return null;
@@ -31,6 +35,16 @@ export function ExpenseForm() {
       setSelectedUsers(users.map(u => u.id));
     }
   }, [users]);
+
+  // Avisar al padre si el formulario tiene datos sin guardar
+  useEffect(() => {
+    onDirtyChange?.(amount !== '' || title !== '');
+  }, [amount, title, onDirtyChange]);
+
+  // Limpiar dirty flag al desmontar (ej: al cambiar de tab)
+  useEffect(() => {
+    return () => onDirtyChange?.(false);
+  }, [onDirtyChange]);
 
   const handleUserToggle = (userId: string) => {
     setSelectedUsers((prev) =>

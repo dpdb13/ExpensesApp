@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useApp } from '../context/AppContext';
 import type { User } from '../types';
 
@@ -8,7 +8,7 @@ export function UserManager() {
 
   if (!activeProject) return null;
 
-  const handleAddUser = (e: React.FormEvent) => {
+  const handleAddUser = (e: FormEvent) => {
     e.preventDefault();
     if (newUserName.trim()) {
       addUser(newUserName.trim());
