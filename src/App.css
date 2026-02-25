@@ -2063,7 +2063,7 @@
    ============================================ */
 .fab {
   position: fixed;
-  bottom: calc(32px + env(safe-area-inset-bottom));
+  bottom: calc(48px + env(safe-area-inset-bottom));
   right: 24px;
   width: 56px;
   height: 56px;
@@ -2094,11 +2094,11 @@
 .expense-form-overlay {
   z-index: 1100;
   align-items: flex-start;
-  padding-top: calc(20px + env(safe-area-inset-top));
+  padding-top: calc(8px + env(safe-area-inset-top));
 }
 
 .expense-form-modal {
-  max-height: 92vh;
+  max-height: 95vh;
   border-radius: var(--radius-xl);
   margin: 0 8px;
 }
