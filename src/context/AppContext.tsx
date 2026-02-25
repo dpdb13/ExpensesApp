@@ -4,6 +4,8 @@ import { useAuth } from './AuthContext';
 import type { Expense, ExpenseShare } from '../types';
 
 // Tipos para la app
+type ProjectRole = 'owner' | 'admin' | 'participant';
+
 interface Project {
   id: string;
   name: string;
@@ -12,7 +14,9 @@ interface Project {
   users: User[];
   expenses: Expense[];
   inviteCode: string | null;
-  isOwner: boolean;
+  inviteRole: 'admin' | 'participant';
+  role: ProjectRole;
+  closedAt: string | null;
 }
 
 interface User {
@@ -32,10 +36,12 @@ interface AppContextType {
   activeProject: Project | null;
   createProject: (name: string, icon?: string, currency?: string, participants?: string[]) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
+  leaveProject: (id: string) => Promise<void>;
   selectProject: (id: string | null) => void;
   addUser: (name: string) => Promise<void>;
   removeUser: (id: string) => Promise<void>;
-  addExpense: (expense: Omit<Expense, 'id'>) => Promise<void>;
+  addExpense: (expense: Omit<Expense, 'id'>) => Promise<boolean>;
+  updateExpense: (id: string, expense: Omit<Expense, 'id'>) => Promise<boolean>;
   removeExpense: (id: string) => Promise<void>;
   undoDeleteExpense: () => Promise<void>;
   lastDeletedExpense: Expense | null;
@@ -49,6 +55,12 @@ interface AppContextType {
   refreshData: () => Promise<void>;
   generateInviteLink: () => Promise<string | null>;
   joinProject: (inviteCode: string) => Promise<{ success: boolean; error?: string }>;
+  closeProject: () => Promise<void>;
+  reopenProject: () => Promise<void>;
+  updateInviteRole: (role: 'admin' | 'participant') => Promise<void>;
+  canEdit: boolean;
+  canDelete: boolean;
+  isClosed: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -69,6 +81,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [state.activeProjectId, state.projects]
   );
 
+  // Helpers de permisos
+  const canEdit = activeProject?.role === 'owner' || activeProject?.role === 'admin';
+  const canDelete = activeProject?.role === 'owner';
+  const isClosed = activeProject?.closedAt != null;
+
   // Cargar proyectos del usuario
   const loadProjects = useCallback(async () => {
     if (!user) {
@@ -85,32 +102,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (ownedError) throw ownedError;
 
-      // Cargar proyectos compartidos con el usuario
-      const { data: sharedProjectIds } = await supabase
+      // Cargar proyectos compartidos con el usuario (incluye el rol)
+      const { data: sharedProjectData } = await supabase
         .from('project_shared_users')
-        .select('project_id')
+        .select('project_id, role')
         .eq('user_id', user.id);
 
+      // Mapa de project_id → role para asignar el rol correcto
+      const roleMap = new Map<string, string>();
+      (sharedProjectData || []).forEach(sp => {
+        roleMap.set(sp.project_id, sp.role || 'participant');
+      });
+
       let sharedProjects: typeof ownedProjects = [];
-      if (sharedProjectIds && sharedProjectIds.length > 0) {
+      if (sharedProjectData && sharedProjectData.length > 0) {
         const { data } = await supabase
           .from('projects')
           .select('*')
-          .in('id', sharedProjectIds.map(p => p.project_id));
+          .in('id', sharedProjectData.map(p => p.project_id));
         sharedProjects = data || [];
       }
 
       // Combinar proyectos propios y compartidos
       const allProjectsRaw = [
-        ...(ownedProjects || []).map(p => ({ ...p, isOwner: true })),
-        ...(sharedProjects || []).map(p => ({ ...p, isOwner: false })),
+        ...(ownedProjects || []).map(p => ({ ...p, _role: 'owner' as ProjectRole })),
+        ...(sharedProjects || []).map(p => ({
+          ...p,
+          _role: (roleMap.get(p.id) || 'participant') as ProjectRole,
+        })),
       ];
-
-      const projects = allProjectsRaw;
 
       // Para cada proyecto, cargar miembros y gastos
       const projectsWithData: Project[] = await Promise.all(
-        (projects || []).map(async (project) => {
+        allProjectsRaw.map(async (project) => {
           // Cargar miembros
           const { data: members } = await supabase
             .from('project_members')
@@ -162,7 +186,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             })),
             expenses: expensesWithShares,
             inviteCode: project.invite_code || null,
-            isOwner: project.isOwner,
+            inviteRole: project.invite_role || 'participant',
+            role: project._role,
+            closedAt: project.closed_at || null,
           };
         })
       );
@@ -219,6 +245,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteProject = async (id: string) => {
+    if (activeProject?.role !== 'owner') return;
     try {
       const { error } = await supabase.from('projects').delete().eq('id', id);
       if (error) throw error;
@@ -233,12 +260,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const leaveProject = async (id: string) => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from('project_shared_users')
+        .delete()
+        .eq('project_id', id)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      setState(prev => ({
+        ...prev,
+        projects: prev.projects.filter(p => p.id !== id),
+        activeProjectId: prev.activeProjectId === id ? null : prev.activeProjectId,
+      }));
+    } catch (error) {
+      console.error('Error leaving project:', error);
+    }
+  };
+
   const selectProject = (id: string | null) => {
     setState(prev => ({ ...prev, activeProjectId: id }));
   };
 
   const addUser = async (name: string) => {
-    if (!activeProject) return;
+    if (!activeProject || activeProject.closedAt) return;
+    if (activeProject.role === 'participant') return;
 
     try {
       const { data: member, error } = await supabase
@@ -267,7 +317,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const removeUser = async (id: string) => {
-    if (!activeProject) return;
+    if (!activeProject || activeProject.closedAt) return;
+    if (activeProject.role === 'participant') return;
 
     try {
       const { error } = await supabase.from('project_members').delete().eq('id', id);
@@ -290,8 +341,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const addExpense = async (expense: Omit<Expense, 'id'>) => {
-    if (!activeProject || !user) return;
+  const addExpense = async (expense: Omit<Expense, 'id'>): Promise<boolean> => {
+    if (!activeProject || !user || activeProject.closedAt) return false;
 
     try {
       // Crear gasto
@@ -339,23 +390,76 @@ export function AppProvider({ children }: { children: ReactNode }) {
             : p
         ),
       }));
+      return true;
     } catch (error) {
       console.error('Error adding expense:', error);
+      return false;
+    }
+  };
+
+  const updateExpense = async (id: string, expenseData: Omit<Expense, 'id'>): Promise<boolean> => {
+    if (!activeProject || !user || activeProject.closedAt) return false;
+
+    try {
+      const { error: expenseError } = await supabase
+        .from('expenses')
+        .update({
+          title: expenseData.title,
+          amount: expenseData.amount,
+          currency: expenseData.currency,
+          date: expenseData.date,
+          paid_by_member_id: expenseData.paidBy,
+          split_type: expenseData.splitType,
+          expense_type: expenseData.expenseType || 'one-off',
+          recurring_frequency: expenseData.recurringFrequency,
+          recurring_start_date: expenseData.recurringStartDate,
+        })
+        .eq('id', id);
+
+      if (expenseError) throw expenseError;
+
+      // Reemplazar shares: borrar antiguas e insertar nuevas
+      await supabase.from('expense_shares').delete().eq('expense_id', id);
+
+      const sharesToInsert = expenseData.shares.map(share => ({
+        expense_id: id,
+        member_id: share.userId,
+        percentage: share.percentage,
+        amount: share.amount,
+      }));
+
+      await supabase.from('expense_shares').insert(sharesToInsert);
+
+      // Actualizar estado local
+      const fullExpense: Expense = { ...expenseData, id };
+
+      setState(prev => ({
+        ...prev,
+        projects: prev.projects.map(p =>
+          p.id === activeProject.id
+            ? { ...p, expenses: p.expenses.map(e => e.id === id ? fullExpense : e) }
+            : p
+        ),
+      }));
+      return true;
+    } catch (error) {
+      console.error('Error updating expense:', error);
+      return false;
     }
   };
 
   const removeExpense = async (id: string) => {
-    if (!activeProject) return;
-
-    // Guardar para undo
-    const expense = activeProject.expenses.find(e => e.id === id);
-    if (expense) {
-      setState(prev => ({ ...prev, lastDeletedExpense: expense }));
-    }
+    if (!activeProject || activeProject.closedAt) return;
 
     try {
       const { error } = await supabase.from('expenses').delete().eq('id', id);
       if (error) throw error;
+
+      // Guardar para undo DESPUES de confirmar que el delete funciono
+      const expense = activeProject.expenses.find(e => e.id === id);
+      if (expense) {
+        setState(prev => ({ ...prev, lastDeletedExpense: expense }));
+      }
 
       setState(prev => ({
         ...prev,
@@ -379,7 +483,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const updateProjectName = async (name: string) => {
-    if (!activeProject) return;
+    if (!activeProject || activeProject.closedAt) return;
+    if (activeProject.role === 'participant') return;
 
     try {
       const { error } = await supabase
@@ -401,7 +506,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const updateProjectIcon = async (icon: string) => {
-    if (!activeProject) return;
+    if (!activeProject || activeProject.closedAt) return;
+    if (activeProject.role === 'participant') return;
 
     try {
       const { error } = await supabase
@@ -423,7 +529,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const setDefaultCurrency = async (currency: string) => {
-    if (!activeProject) return;
+    if (!activeProject || activeProject.closedAt) return;
+    if (activeProject.role === 'participant') return;
 
     try {
       const { error } = await supabase
@@ -441,6 +548,76 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }));
     } catch (error) {
       console.error('Error updating currency:', error);
+    }
+  };
+
+  const closeProject = async () => {
+    if (!activeProject) return;
+    if (activeProject.role === 'participant') return;
+
+    try {
+      const now = new Date().toISOString();
+      const { error } = await supabase
+        .from('projects')
+        .update({ closed_at: now })
+        .eq('id', activeProject.id);
+
+      if (error) throw error;
+
+      setState(prev => ({
+        ...prev,
+        projects: prev.projects.map(p =>
+          p.id === activeProject.id ? { ...p, closedAt: now } : p
+        ),
+      }));
+    } catch (error) {
+      console.error('Error closing project:', error);
+    }
+  };
+
+  const reopenProject = async () => {
+    if (!activeProject) return;
+    if (activeProject.role === 'participant') return;
+
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({ closed_at: null })
+        .eq('id', activeProject.id);
+
+      if (error) throw error;
+
+      setState(prev => ({
+        ...prev,
+        projects: prev.projects.map(p =>
+          p.id === activeProject.id ? { ...p, closedAt: null } : p
+        ),
+      }));
+    } catch (error) {
+      console.error('Error reopening project:', error);
+    }
+  };
+
+  const updateInviteRole = async (role: 'admin' | 'participant') => {
+    if (!activeProject || activeProject.closedAt) return;
+    if (activeProject.role === 'participant') return;
+
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({ invite_role: role })
+        .eq('id', activeProject.id);
+
+      if (error) throw error;
+
+      setState(prev => ({
+        ...prev,
+        projects: prev.projects.map(p =>
+          p.id === activeProject.id ? { ...p, inviteRole: role } : p
+        ),
+      }));
+    } catch (error) {
+      console.error('Error updating invite role:', error);
     }
   };
 
@@ -483,7 +660,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const generateInviteLink = async (): Promise<string | null> => {
-    if (!activeProject) return null;
+    if (!activeProject || activeProject.closedAt) return null;
+    if (activeProject.role === 'participant') return null;
 
     try {
       // Si ya tiene código, devolverlo
@@ -491,8 +669,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return `${window.location.origin}/ExpensesApp/?join=${activeProject.inviteCode}`;
       }
 
-      // Generar código único de 8 caracteres
-      const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+      // Generar código seguro de 12 caracteres (sin I/1/O/0 para evitar confusión)
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      const array = new Uint8Array(12);
+      crypto.getRandomValues(array);
+      const code = Array.from(array, b => chars[b % chars.length]).join('');
 
       const { error } = await supabase
         .from('projects')
@@ -553,10 +734,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         activeProject,
         createProject,
         deleteProject,
+        leaveProject,
         selectProject,
         addUser,
         removeUser,
         addExpense,
+        updateExpense,
         removeExpense,
         undoDeleteExpense,
         lastDeletedExpense: state.lastDeletedExpense,
@@ -570,6 +753,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         refreshData,
         generateInviteLink,
         joinProject,
+        closeProject,
+        reopenProject,
+        updateInviteRole,
+        canEdit,
+        canDelete,
+        isClosed,
       }}
     >
       {children}

@@ -1,17 +1,17 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useApp } from '../context/AppContext';
-import { CURRENCIES, type ExpenseShare, type User, type ExpenseType, type RecurringFrequency } from '../types';
+import { CURRENCIES, type Expense, type ExpenseShare, type User, type ExpenseType, type RecurringFrequency } from '../types';
 
 interface ExpenseFormProps {
-  onDirtyChange?: (dirty: boolean) => void;
+  editExpense?: Expense | null;
+  onClose: () => void;
 }
 
-export function ExpenseForm({ onDirtyChange }: ExpenseFormProps) {
-  const { activeProject, addExpense } = useApp();
+export function ExpenseForm({ editExpense, onClose }: ExpenseFormProps) {
+  const { activeProject, addExpense, updateExpense, isClosed } = useApp();
 
-  if (!activeProject) return null;
-
-  const { users, defaultCurrency } = activeProject;
+  const users = activeProject?.users ?? [];
+  const defaultCurrency = activeProject?.defaultCurrency ?? 'EUR';
 
   const [amount, setAmount] = useState('');
   const [title, setTitle] = useState('');
@@ -23,28 +23,47 @@ export function ExpenseForm({ onDirtyChange }: ExpenseFormProps) {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-
-  // Expense type (one-off or recurring)
   const [expenseType, setExpenseType] = useState<ExpenseType>('one-off');
   const [recurringFrequency, setRecurringFrequency] = useState<RecurringFrequency>('monthly');
   const [recurringStartDate, setRecurringStartDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Auto-select all users by default
+  // Inicializar campos UNA SOLA VEZ al montar (el ref evita que cambios
+  // de referencia en users/editExpense reseteen la seleccion del usuario)
+  const initializedRef = useRef(false);
   useEffect(() => {
-    if (users.length > 0 && selectedUsers.length === 0) {
+    if (initializedRef.current) return;
+    if (users.length === 0) return; // esperar a que carguen los usuarios
+
+    initializedRef.current = true;
+
+    if (editExpense) {
+      setAmount(editExpense.amount.toString());
+      setTitle(editExpense.title);
+      setCurrency(editExpense.currency);
+      setPaidBy(editExpense.paidBy);
+      setSelectedUsers(editExpense.shares.map(s => s.userId));
+      setSplitType(editExpense.splitType);
+      setDate(editExpense.date);
+      setExpenseType(editExpense.expenseType || 'one-off');
+      setRecurringFrequency(editExpense.recurringFrequency || 'monthly');
+      setRecurringStartDate(editExpense.recurringStartDate || new Date().toISOString().split('T')[0]);
+      if (editExpense.splitType === 'custom') {
+        const percentages: Record<string, number> = {};
+        editExpense.shares.forEach(s => { percentages[s.userId] = s.percentage; });
+        setCustomPercentages(percentages);
+      }
+      if (editExpense.currency !== defaultCurrency) {
+        setShowAdvanced(true);
+      }
+    } else {
+      // Modo añadir: seleccionar todos los usuarios por defecto
       setSelectedUsers(users.map(u => u.id));
     }
-  }, [users]);
+  }, [editExpense, users, defaultCurrency]);
 
-  // Avisar al padre si el formulario tiene datos sin guardar
-  useEffect(() => {
-    onDirtyChange?.(amount !== '' || title !== '');
-  }, [amount, title, onDirtyChange]);
+  if (!activeProject || isClosed) return null;
 
-  // Limpiar dirty flag al desmontar (ej: al cambiar de tab)
-  useEffect(() => {
-    return () => onDirtyChange?.(false);
-  }, [onDirtyChange]);
+  const isEditing = !!editExpense;
 
   const handleUserToggle = (userId: string) => {
     setSelectedUsers((prev) =>
@@ -63,6 +82,7 @@ export function ExpenseForm({ onDirtyChange }: ExpenseFormProps) {
   };
 
   const calculateShares = (): ExpenseShare[] => {
+    if (selectedUsers.length === 0) return [];
     const numAmount = parseFloat(amount) || 0;
 
     if (splitType === 'equal') {
@@ -91,7 +111,7 @@ export function ExpenseForm({ onDirtyChange }: ExpenseFormProps) {
     return selectedUsers.reduce((sum, userId) => sum + (customPercentages[userId] || 0), 0);
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
     if (!amount || !title || !paidBy || selectedUsers.length === 0) {
@@ -104,7 +124,7 @@ export function ExpenseForm({ onDirtyChange }: ExpenseFormProps) {
       return;
     }
 
-    addExpense({
+    const expenseData = {
       amount: parseFloat(amount),
       title,
       currency,
@@ -117,18 +137,17 @@ export function ExpenseForm({ onDirtyChange }: ExpenseFormProps) {
         recurringFrequency,
         recurringStartDate,
       }),
-    });
+    };
 
-    // Reset form
-    setAmount('');
-    setTitle('');
-    setPaidBy('');
-    setSelectedUsers(users.map(u => u.id));
-    setCustomPercentages({});
-    setSplitType('equal');
-    setShowAdvanced(false);
-    setExpenseType('one-off');
-    setRecurringFrequency('monthly');
+    const success = isEditing
+      ? await updateExpense(editExpense.id, expenseData)
+      : await addExpense(expenseData);
+
+    if (success) {
+      onClose();
+    } else {
+      alert('Error al guardar el gasto. Intentalo de nuevo.');
+    }
   };
 
   const getCurrencySymbol = () => {
@@ -155,289 +174,307 @@ export function ExpenseForm({ onDirtyChange }: ExpenseFormProps) {
 
   if (users.length === 0) {
     return (
-      <div className="expense-form">
-        <h3>Añadir Gasto</h3>
-        <div className="empty-message">
-          <p>Añade participantes primero</p>
-          <p>Ve a la pestaña "Participantes"</p>
+      <div className="modal-overlay expense-form-overlay" onClick={onClose}>
+        <div className="modal-content expense-form-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <h4>{isEditing ? 'Editar Gasto' : 'Nuevo Gasto'}</h4>
+            <button type="button" className="modal-close" onClick={onClose}>×</button>
+          </div>
+          <div className="modal-body">
+            <div className="empty-message">
+              <p>Añade participantes primero</p>
+              <p>Ve a la pestaña "Participantes"</p>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="expense-form">
-      <h3>Añadir Gasto</h3>
-
-      <form onSubmit={handleSubmit}>
-        {/* Importe grande */}
-        <div className="amount-input-container">
-          <span className="currency-symbol">{getCurrencySymbol()}</span>
-          <input
-            type="number"
-            step="0.01"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0.00"
-            className="amount-input"
-            inputMode="decimal"
-          />
+    <div className="modal-overlay expense-form-overlay" onClick={onClose}>
+      <div className="modal-content expense-form-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h4>{isEditing ? 'Editar Gasto' : 'Nuevo Gasto'}</h4>
+          <button type="button" className="modal-close" onClick={onClose}>×</button>
         </div>
 
-        {/* Título */}
-        <div className="form-group">
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Por ejemplo, supermercado"
-            className="input"
-          />
-        </div>
-
-        {/* Tipo de gasto */}
-        <div className="form-group">
-          <label>Tipo de gasto</label>
-          <div className="expense-type-selector">
-            <button
-              type="button"
-              className={`expense-type-option ${expenseType === 'one-off' ? 'selected' : ''}`}
-              onClick={() => setExpenseType('one-off')}
-            >
-              Único
-            </button>
-            <button
-              type="button"
-              className={`expense-type-option ${expenseType === 'recurring' ? 'selected' : ''}`}
-              onClick={() => setExpenseType('recurring')}
-            >
-              Recurrente
-            </button>
-          </div>
-        </div>
-
-        {/* Opciones de recurrencia */}
-        {expenseType === 'recurring' && (
-          <div className="recurring-options">
-            <div className="form-group">
-              <label>Frecuencia</label>
-              <div className="frequency-selector">
-                {(['weekly', 'monthly', 'yearly'] as RecurringFrequency[]).map((freq) => (
-                  <button
-                    key={freq}
-                    type="button"
-                    className={`frequency-option ${recurringFrequency === freq ? 'selected' : ''}`}
-                    onClick={() => setRecurringFrequency(freq)}
-                  >
-                    {getFrequencyLabel(freq)}
-                  </button>
-                ))}
-              </div>
+        <div className="modal-body">
+          <form onSubmit={handleSubmit}>
+            {/* Importe grande */}
+            <div className="amount-input-container">
+              <span className="currency-symbol">{getCurrencySymbol()}</span>
+              <input
+                type="number"
+                step="0.01"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                className="amount-input"
+                inputMode="decimal"
+                autoFocus={!isEditing}
+              />
             </div>
 
+            {/* Titulo */}
             <div className="form-group">
-              <label>Fecha de inicio</label>
               <input
-                type="date"
-                value={recurringStartDate}
-                onChange={(e) => setRecurringStartDate(e.target.value)}
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Por ejemplo, supermercado"
                 className="input"
               />
             </div>
-          </div>
-        )}
 
-        {/* Fila: Pagado por + Fecha (solo si es único) */}
-        <div className="form-row-2">
-          <div className="form-group">
-            <label>Pagado por</label>
-            <select
-              value={paidBy}
-              onChange={(e) => setPaidBy(e.target.value)}
-              className="input select-styled"
-            >
-              <option value="">Seleccionar...</option>
-              {users.map((user: User) => (
-                <option key={user.id} value={user.id}>
-                  {user.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {expenseType === 'one-off' && (
+            {/* Tipo de gasto */}
             <div className="form-group">
-              <label>Fecha</label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="input"
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Dividir entre - Botón que abre modal */}
-        <div className="form-group">
-          <label>Dividir entre</label>
-          <button
-            type="button"
-            className="input select-button"
-            onClick={() => setShowSplitModal(true)}
-          >
-            <span>{getSplitSummary()}</span>
-            <span className="select-arrow">▼</span>
-          </button>
-        </div>
-
-        {/* Modal de reparto */}
-        {showSplitModal && (
-          <div className="modal-overlay" onClick={() => setShowSplitModal(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
-                <h4>Dividir entre</h4>
+              <label>Tipo de gasto</label>
+              <div className="expense-type-selector">
                 <button
                   type="button"
-                  className="modal-close"
-                  onClick={() => setShowSplitModal(false)}
+                  className={`expense-type-option ${expenseType === 'one-off' ? 'selected' : ''}`}
+                  onClick={() => setExpenseType('one-off')}
                 >
-                  ×
+                  Unico
+                </button>
+                <button
+                  type="button"
+                  className={`expense-type-option ${expenseType === 'recurring' ? 'selected' : ''}`}
+                  onClick={() => setExpenseType('recurring')}
+                >
+                  Recurrente
                 </button>
               </div>
+            </div>
 
-              <div className="modal-body">
-                <div className="split-options-list">
-                  <button
-                    type="button"
-                    className={`split-list-item ${selectedUsers.length === users.length ? 'selected' : ''}`}
-                    onClick={() => setSelectedUsers(users.map(u => u.id))}
-                  >
-                    <span className="split-list-icon">👥</span>
-                    <span>Todos</span>
-                    {selectedUsers.length === users.length && <span className="check">✓</span>}
-                  </button>
+            {/* Opciones de recurrencia */}
+            {expenseType === 'recurring' && (
+              <div className="recurring-options">
+                <div className="form-group">
+                  <label>Frecuencia</label>
+                  <div className="frequency-selector">
+                    {(['weekly', 'monthly', 'yearly'] as RecurringFrequency[]).map((freq) => (
+                      <button
+                        key={freq}
+                        type="button"
+                        className={`frequency-option ${recurringFrequency === freq ? 'selected' : ''}`}
+                        onClick={() => setRecurringFrequency(freq)}
+                      >
+                        {getFrequencyLabel(freq)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-                  {users.map((user: User, index: number) => (
-                    <button
-                      key={user.id}
-                      type="button"
-                      className={`split-list-item ${selectedUsers.includes(user.id) ? 'selected' : ''}`}
-                      onClick={() => handleUserToggle(user.id)}
-                    >
-                      <span className={`split-list-avatar avatar-${(index % 8) + 1}`}>
-                        {user.name.charAt(0).toUpperCase()}
-                      </span>
-                      <span>{user.name}</span>
-                      {selectedUsers.includes(user.id) && <span className="check">✓</span>}
-                    </button>
+                <div className="form-group">
+                  <label>Fecha de inicio</label>
+                  <input
+                    type="date"
+                    value={recurringStartDate}
+                    onChange={(e) => setRecurringStartDate(e.target.value)}
+                    className="input"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Fila: Pagado por + Fecha */}
+            <div className="form-row-2">
+              <div className="form-group">
+                <label>Pagado por</label>
+                <select
+                  value={paidBy}
+                  onChange={(e) => setPaidBy(e.target.value)}
+                  className="input select-styled"
+                >
+                  <option value="">Seleccionar...</option>
+                  {users.map((user: User) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name}
+                    </option>
                   ))}
-                </div>
-
-                {/* Tipo de reparto */}
-                <div className="split-type-section">
-                  <label>Tipo de reparto</label>
-                  <div className="split-type-selector">
-                    <button
-                      type="button"
-                      className={`split-type-option ${splitType === 'equal' ? 'selected' : ''}`}
-                      onClick={() => setSplitType('equal')}
-                    >
-                      Partes iguales
-                    </button>
-                    <button
-                      type="button"
-                      className={`split-type-option ${splitType === 'custom' ? 'selected' : ''}`}
-                      onClick={() => setSplitType('custom')}
-                    >
-                      Personalizado
-                    </button>
-                  </div>
-                </div>
-
-                {splitType === 'custom' && selectedUsers.length > 0 && (
-                  <div className="percentage-inputs">
-                    {selectedUsers.map((userId) => {
-                      const user = users.find((u: User) => u.id === userId);
-                      const percentage = customPercentages[userId] || 0;
-                      const calculatedAmount = ((parseFloat(amount) || 0) * percentage) / 100;
-                      return (
-                        <div key={userId} className="percentage-row">
-                          <span className="percentage-name">{user?.name}</span>
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            max="100"
-                            value={customPercentages[userId] || ''}
-                            onChange={(e) => handlePercentageChange(userId, e.target.value)}
-                            placeholder="0"
-                            className="input input-small"
-                            inputMode="decimal"
-                          />
-                          <span className="percentage-symbol">%</span>
-                          <span className="percentage-amount">
-                            = {getCurrencySymbol()}{calculatedAmount.toFixed(2)}
-                          </span>
-                        </div>
-                      );
-                    })}
-                    <div className={`percentage-total ${Math.abs(getTotalPercentage() - 100) < 0.01 ? 'valid' : 'invalid'}`}>
-                      Total: {getTotalPercentage().toFixed(1)}%
-                    </div>
-                  </div>
-                )}
+                </select>
               </div>
 
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-primary btn-block"
-                  onClick={() => setShowSplitModal(false)}
-                >
-                  Confirmar
-                </button>
-              </div>
+              {expenseType === 'one-off' && (
+                <div className="form-group">
+                  <label>Fecha</label>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="input"
+                  />
+                </div>
+              )}
             </div>
-          </div>
-        )}
 
-        {/* Opciones avanzadas */}
-        <button
-          type="button"
-          className="btn-link advanced-toggle"
-          onClick={() => setShowAdvanced(!showAdvanced)}
-        >
-          {showAdvanced ? '▼ Menos opciones' : '▶ Cambiar moneda'}
-        </button>
-
-        {showAdvanced && (
-          <div className="advanced-options">
+            {/* Dividir entre */}
             <div className="form-group">
-              <label>Moneda</label>
-              <select
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value)}
-                className="input"
+              <label>Dividir entre</label>
+              <button
+                type="button"
+                className="input select-button"
+                onClick={() => setShowSplitModal(true)}
               >
-                {CURRENCIES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.symbol} {c.code}
-                  </option>
-                ))}
-              </select>
+                <span>{getSplitSummary()}</span>
+                <span className="select-arrow">▼</span>
+              </button>
             </div>
-          </div>
-        )}
 
-        <button
-          type="submit"
-          className="btn btn-primary btn-block"
-          disabled={!amount || !title || !paidBy || selectedUsers.length === 0}
-        >
-          Añadir Gasto
-        </button>
-      </form>
+            {/* Modal de reparto */}
+            {showSplitModal && (
+              <div className="modal-overlay split-modal-overlay" onClick={() => setShowSplitModal(false)}>
+                <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                  <div className="modal-header">
+                    <h4>Dividir entre</h4>
+                    <button
+                      type="button"
+                      className="modal-close"
+                      onClick={() => setShowSplitModal(false)}
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  <div className="modal-body">
+                    <div className="split-options-list">
+                      <button
+                        type="button"
+                        className={`split-list-item ${selectedUsers.length === users.length ? 'selected' : ''}`}
+                        onClick={() => setSelectedUsers(users.map(u => u.id))}
+                      >
+                        <span className="split-list-icon">👥</span>
+                        <span>Todos</span>
+                        <span className={`check ${selectedUsers.length === users.length ? '' : 'check-hidden'}`}>✓</span>
+                      </button>
+
+                      {users.map((user: User, index: number) => {
+                        const isSelected = selectedUsers.includes(user.id);
+                        return (
+                          <button
+                            key={user.id}
+                            type="button"
+                            className={`split-list-item ${isSelected ? 'selected' : ''}`}
+                            onClick={() => handleUserToggle(user.id)}
+                          >
+                            <span className={`split-list-avatar avatar-${(index % 8) + 1}`}>
+                              {user.name.charAt(0).toUpperCase()}
+                            </span>
+                            <span>{user.name}</span>
+                            <span className={`check ${isSelected ? '' : 'check-hidden'}`}>✓</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Tipo de reparto */}
+                    <div className="split-type-section">
+                      <label>Tipo de reparto</label>
+                      <div className="split-type-selector">
+                        <button
+                          type="button"
+                          className={`split-type-option ${splitType === 'equal' ? 'selected' : ''}`}
+                          onClick={() => setSplitType('equal')}
+                        >
+                          Partes iguales
+                        </button>
+                        <button
+                          type="button"
+                          className={`split-type-option ${splitType === 'custom' ? 'selected' : ''}`}
+                          onClick={() => setSplitType('custom')}
+                        >
+                          Personalizado
+                        </button>
+                      </div>
+                    </div>
+
+                    {splitType === 'custom' && selectedUsers.length > 0 && (
+                      <div className="percentage-inputs">
+                        {selectedUsers.map((userId) => {
+                          const user = users.find((u: User) => u.id === userId);
+                          const percentage = customPercentages[userId] || 0;
+                          const calculatedAmount = ((parseFloat(amount) || 0) * percentage) / 100;
+                          return (
+                            <div key={userId} className="percentage-row">
+                              <span className="percentage-name">{user?.name}</span>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="100"
+                                value={customPercentages[userId] ?? ''}
+                                onChange={(e) => handlePercentageChange(userId, e.target.value)}
+                                placeholder="0"
+                                className="input input-small"
+                                inputMode="decimal"
+                              />
+                              <span className="percentage-symbol">%</span>
+                              <span className="percentage-amount">
+                                = {getCurrencySymbol()}{calculatedAmount.toFixed(2)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                        <div className={`percentage-total ${Math.abs(getTotalPercentage() - 100) < 0.01 ? 'valid' : 'invalid'}`}>
+                          Total: {getTotalPercentage().toFixed(1)}%
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="modal-footer">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-block"
+                      onClick={() => setShowSplitModal(false)}
+                    >
+                      Confirmar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Opciones avanzadas */}
+            <button
+              type="button"
+              className="btn-link advanced-toggle"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+            >
+              {showAdvanced ? '▼ Menos opciones' : '▶ Cambiar moneda'}
+            </button>
+
+            {showAdvanced && (
+              <div className="advanced-options">
+                <div className="form-group">
+                  <label>Moneda</label>
+                  <select
+                    value={currency}
+                    onChange={(e) => setCurrency(e.target.value)}
+                    className="input"
+                  >
+                    {CURRENCIES.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.symbol} {c.code}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="btn btn-primary btn-block"
+              disabled={!amount || !title || !paidBy || selectedUsers.length === 0}
+            >
+              {isEditing ? 'Guardar Cambios' : 'Añadir Gasto'}
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

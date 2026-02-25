@@ -8,33 +8,58 @@ import { UserManager } from './components/UserManager';
 import { ExpenseForm } from './components/ExpenseForm';
 import { ExpenseList } from './components/ExpenseList';
 import { Summary } from './components/Summary';
-import { MonthlySummary } from './components/MonthlySummary';
+import type { Expense } from './types';
 import './App.css';
 
-type Tab = 'gastos' | 'participantes' | 'resumen' | 'mensual';
+type Tab = 'gastos' | 'participantes' | 'resumen';
 
 function App() {
   const { user, loading } = useAuth();
-  const { activeProject, joinProject, selectProject } = useApp();
+  const { activeProject, joinProject, selectProject, isClosed } = useApp();
   const [activeTab, setActiveTab] = useState<Tab>('gastos');
   const [joinMessage, setJoinMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [showExitConfirm, setShowExitConfirm] = useState(false);
   const navGuardRef = useRef(false);
-  const formDirtyRef = useRef(false);
 
-  // Callback para que ExpenseForm avise si tiene datos sin guardar
-  const handleFormDirtyChange = useCallback((dirty: boolean) => {
-    formDirtyRef.current = dirty;
+  // Estado para el modal del formulario de gastos
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const showExpenseFormRef = useRef(false);
+
+  // Abrir formulario para añadir gasto
+  const openAddExpense = useCallback(() => {
+    setEditingExpense(null);
+    setShowExpenseForm(true);
+    showExpenseFormRef.current = true;
+    window.history.pushState({ screen: 'expense-form' }, '');
   }, []);
 
-  // Manejar enlace de invitación
+  // Abrir formulario para editar gasto
+  const openEditExpense = useCallback((expense: Expense) => {
+    setEditingExpense(expense);
+    setShowExpenseForm(true);
+    showExpenseFormRef.current = true;
+    window.history.pushState({ screen: 'expense-form' }, '');
+  }, []);
+
+  // Cerrar formulario (desde botón X o overlay)
+  const closeExpenseForm = useCallback(() => {
+    if (showExpenseFormRef.current) {
+      showExpenseFormRef.current = false;
+      setShowExpenseForm(false);
+      setEditingExpense(null);
+      navGuardRef.current = true;
+      window.history.back();
+      setTimeout(() => { navGuardRef.current = false; }, 150);
+    }
+  }, []);
+
+  // Manejar enlace de invitacion
   useEffect(() => {
     const handleJoinLink = async () => {
       const params = new URLSearchParams(window.location.search);
       const joinCode = params.get('join');
 
       if (joinCode && user) {
-        // Limpiar URL
         window.history.replaceState({}, '', window.location.pathname);
 
         const result = await joinProject(joinCode);
@@ -44,7 +69,6 @@ function App() {
           setJoinMessage({ type: 'error', text: result.error || 'Error al unirse' });
         }
 
-        // Ocultar mensaje después de 3 segundos
         setTimeout(() => setJoinMessage(null), 3000);
       }
     };
@@ -59,7 +83,7 @@ function App() {
     window.history.replaceState({ screen: 'projects' }, '');
   }, []);
 
-  // History API: push solo cuando cambia el proyecto activo (por ID, no por referencia)
+  // History API: push cuando cambia el proyecto activo
   const activeProjectId = activeProject?.id;
   useEffect(() => {
     if (activeProjectId) {
@@ -67,28 +91,27 @@ function App() {
     }
   }, [activeProjectId]);
 
-  // Manejar navegación hacia atrás (llamado desde popstate)
+  // Manejar navegacion hacia atras
   const handleGoBack = useCallback(() => {
-    if (activeProject) {
-      if (formDirtyRef.current && activeTab === 'gastos') {
-        // El formulario tiene datos, pedir confirmación y re-push
-        setShowExitConfirm(true);
-        window.history.pushState({ screen: 'project', projectId: activeProject.id }, '');
-      } else {
-        selectProject(null);
-      }
+    if (showExpenseFormRef.current) {
+      // Cerrar el modal del formulario
+      showExpenseFormRef.current = false;
+      setShowExpenseForm(false);
+      setEditingExpense(null);
+    } else if (activeProject) {
+      selectProject(null);
     } else {
       // En la lista de proyectos: re-push para no salir de la PWA
       window.history.pushState({ screen: 'projects' }, '');
     }
-  }, [activeProject, activeTab, selectProject]);
+  }, [activeProject, selectProject]);
 
-  // Escuchar popstate (gesto de back / botón atrás)
+  // Escuchar popstate
   useEffect(() => {
     const onPopState = () => {
       if (navGuardRef.current) return;
       navGuardRef.current = true;
-      requestAnimationFrame(() => { navGuardRef.current = false; });
+      setTimeout(() => { navGuardRef.current = false; }, 150);
       handleGoBack();
     };
 
@@ -96,17 +119,7 @@ function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, [handleGoBack]);
 
-  // Confirmar salida del proyecto
-  const confirmExit = useCallback(() => {
-    setShowExitConfirm(false);
-    formDirtyRef.current = false;
-    navGuardRef.current = true;
-    window.history.back();
-    requestAnimationFrame(() => { navGuardRef.current = false; });
-    selectProject(null);
-  }, [selectProject]);
-
-  // Mostrar pantalla de carga mientras se verifica la sesión
+  // Pantalla de carga
   if (loading) {
     return (
       <div className="app loading-screen">
@@ -118,12 +131,12 @@ function App() {
     );
   }
 
-  // Si no hay usuario, mostrar pantalla de login
+  // Sin sesion
   if (!user) {
     return <Auth />;
   }
 
-  // Si no hay proyecto activo, mostrar lista de proyectos
+  // Lista de proyectos
   if (!activeProject) {
     return (
       <div className="app">
@@ -160,41 +173,33 @@ function App() {
         >
           Resumen
         </button>
-        <button
-          className={`tab ${activeTab === 'mensual' ? 'active' : ''}`}
-          onClick={() => setActiveTab('mensual')}
-        >
-          Por Mes
-        </button>
       </nav>
 
       <main className="content">
         {activeTab === 'gastos' && (
-          <div className="gastos-view">
-            <ExpenseForm onDirtyChange={handleFormDirtyChange} />
-            <ExpenseList />
-          </div>
+          <ExpenseList onEditExpense={openEditExpense} />
         )}
         {activeTab === 'participantes' && <UserManager />}
         {activeTab === 'resumen' && <Summary />}
-        {activeTab === 'mensual' && <MonthlySummary />}
       </main>
 
-      {showExitConfirm && (
-        <div className="modal-overlay exit-confirm-overlay" onClick={() => setShowExitConfirm(false)}>
-          <div className="exit-confirm-modal" onClick={e => e.stopPropagation()}>
-            <p className="exit-confirm-title">Tienes un gasto sin guardar</p>
-            <p className="exit-confirm-subtitle">Si sales ahora, perderás los datos del formulario.</p>
-            <div className="exit-confirm-actions">
-              <button className="btn btn-secondary" onClick={() => setShowExitConfirm(false)}>
-                Cancelar
-              </button>
-              <button className="btn btn-danger" onClick={confirmExit}>
-                Salir
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Boton flotante + para añadir gasto */}
+      {activeTab === 'gastos' && !isClosed && (
+        <button
+          className="fab"
+          onClick={openAddExpense}
+          title="Añadir gasto"
+        >
+          +
+        </button>
+      )}
+
+      {/* Modal del formulario de gastos */}
+      {showExpenseForm && (
+        <ExpenseForm
+          editExpense={editingExpense}
+          onClose={closeExpenseForm}
+        />
       )}
     </div>
   );

@@ -5,7 +5,7 @@
 
 -- Tabla de perfiles de usuario (extiende auth.users)
 CREATE TABLE profiles (
-  id UUID REFERENCES auth.users(id) PRIMARY KEY,
+  id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
   email TEXT NOT NULL,
   display_name TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -17,7 +17,10 @@ CREATE TABLE projects (
   name TEXT NOT NULL,
   icon TEXT DEFAULT '✈️',
   default_currency TEXT DEFAULT 'EUR',
-  created_by UUID REFERENCES profiles(id) NOT NULL,
+  invite_code TEXT UNIQUE,
+  invite_role TEXT DEFAULT 'participant' CHECK (invite_role IN ('admin', 'participant')),
+  closed_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+  created_by UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -44,7 +47,7 @@ CREATE TABLE expenses (
   expense_type TEXT DEFAULT 'one-off' CHECK (expense_type IN ('one-off', 'recurring')),
   recurring_frequency TEXT CHECK (recurring_frequency IN ('weekly', 'monthly', 'yearly')),
   recurring_start_date DATE,
-  created_by UUID REFERENCES profiles(id) NOT NULL,
+  created_by UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -58,6 +61,16 @@ CREATE TABLE expense_shares (
   UNIQUE(expense_id, member_id)
 );
 
+-- Tabla de usuarios compartidos (invitados a proyectos)
+CREATE TABLE project_shared_users (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  role TEXT DEFAULT 'participant' CHECK (role IN ('admin', 'participant')),
+  joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(project_id, user_id)
+);
+
 -- =============================================
 -- POLÍTICAS DE SEGURIDAD (Row Level Security)
 -- =============================================
@@ -68,6 +81,7 @@ ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE expense_shares ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_shared_users ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para profiles
 CREATE POLICY "Usuarios pueden ver su propio perfil" ON profiles
@@ -79,7 +93,24 @@ CREATE POLICY "Usuarios pueden actualizar su propio perfil" ON profiles
 CREATE POLICY "Usuarios pueden insertar su propio perfil" ON profiles
   FOR INSERT WITH CHECK (auth.uid() = id);
 
--- Políticas para projects (los miembros pueden ver/editar)
+-- =============================================
+-- FUNCIÓN HELPER: Comprobar si usuario es admin
+-- =============================================
+CREATE OR REPLACE FUNCTION is_project_admin(p_project_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM project_shared_users
+    WHERE project_id = p_project_id
+    AND user_id = auth.uid()
+    AND role = 'admin'
+  );
+$$;
+
+-- Políticas para projects
 CREATE POLICY "Miembros pueden ver proyectos" ON projects
   FOR SELECT USING (
     EXISTS (
@@ -88,13 +119,21 @@ CREATE POLICY "Miembros pueden ver proyectos" ON projects
       AND project_members.user_id = auth.uid()
     )
     OR created_by = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM project_shared_users
+      WHERE project_shared_users.project_id = projects.id
+      AND project_shared_users.user_id = auth.uid()
+    )
   );
 
 CREATE POLICY "Usuarios pueden crear proyectos" ON projects
   FOR INSERT WITH CHECK (auth.uid() = created_by);
 
-CREATE POLICY "Creador puede actualizar proyecto" ON projects
-  FOR UPDATE USING (auth.uid() = created_by);
+CREATE POLICY "Owner o admin puede actualizar proyecto" ON projects
+  FOR UPDATE USING (
+    auth.uid() = created_by
+    OR is_project_admin(id)
+  );
 
 CREATE POLICY "Creador puede eliminar proyecto" ON projects
   FOR DELETE USING (auth.uid() = created_by);
@@ -112,24 +151,23 @@ CREATE POLICY "Miembros pueden ver otros miembros del proyecto" ON project_membe
       WHERE projects.id = project_members.project_id
       AND projects.created_by = auth.uid()
     )
+    OR EXISTS (
+      SELECT 1 FROM project_shared_users
+      WHERE project_shared_users.project_id = project_members.project_id
+      AND project_shared_users.user_id = auth.uid()
+    )
   );
 
-CREATE POLICY "Creador del proyecto puede añadir miembros" ON project_members
+CREATE POLICY "Owner o admin puede añadir miembros" ON project_members
   FOR INSERT WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM projects
-      WHERE projects.id = project_id
-      AND projects.created_by = auth.uid()
-    )
+    EXISTS (SELECT 1 FROM projects WHERE projects.id = project_id AND projects.created_by = auth.uid())
+    OR is_project_admin(project_id)
   );
 
-CREATE POLICY "Creador del proyecto puede eliminar miembros" ON project_members
+CREATE POLICY "Owner o admin puede eliminar miembros" ON project_members
   FOR DELETE USING (
-    EXISTS (
-      SELECT 1 FROM projects
-      WHERE projects.id = project_id
-      AND projects.created_by = auth.uid()
-    )
+    EXISTS (SELECT 1 FROM projects WHERE projects.id = project_id AND projects.created_by = auth.uid())
+    OR is_project_admin(project_id)
   );
 
 -- Políticas para expenses
@@ -140,6 +178,16 @@ CREATE POLICY "Miembros pueden ver gastos del proyecto" ON expenses
       WHERE project_members.project_id = expenses.project_id
       AND project_members.user_id = auth.uid()
     )
+    OR EXISTS (
+      SELECT 1 FROM projects
+      WHERE projects.id = expenses.project_id
+      AND projects.created_by = auth.uid()
+    )
+    OR EXISTS (
+      SELECT 1 FROM project_shared_users
+      WHERE project_shared_users.project_id = expenses.project_id
+      AND project_shared_users.user_id = auth.uid()
+    )
   );
 
 CREATE POLICY "Miembros pueden crear gastos" ON expenses
@@ -148,6 +196,16 @@ CREATE POLICY "Miembros pueden crear gastos" ON expenses
       SELECT 1 FROM project_members
       WHERE project_members.project_id = project_id
       AND project_members.user_id = auth.uid()
+    )
+    OR EXISTS (
+      SELECT 1 FROM projects
+      WHERE projects.id = project_id
+      AND projects.created_by = auth.uid()
+    )
+    OR EXISTS (
+      SELECT 1 FROM project_shared_users
+      WHERE project_shared_users.project_id = project_id
+      AND project_shared_users.user_id = auth.uid()
     )
   );
 
@@ -186,6 +244,80 @@ CREATE POLICY "Miembros pueden eliminar repartos" ON expense_shares
       AND expenses.created_by = auth.uid()
     )
   );
+
+-- Políticas para project_shared_users
+CREATE POLICY "Usuarios pueden ver sus proyectos compartidos" ON project_shared_users
+  FOR SELECT USING (user_id = auth.uid());
+
+CREATE POLICY "Usuarios pueden abandonar proyectos compartidos" ON project_shared_users
+  FOR DELETE USING (user_id = auth.uid());
+
+-- =============================================
+-- FUNCIONES RPC
+-- =============================================
+
+-- Unirse a un proyecto con código de invitación (asigna el rol definido en el proyecto)
+CREATE OR REPLACE FUNCTION join_project_by_invite_code(invite_code_input TEXT)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  project_record RECORD;
+  existing_shared RECORD;
+BEGIN
+  SELECT id, created_by, invite_role INTO project_record
+  FROM projects WHERE invite_code = invite_code_input;
+
+  IF project_record IS NULL THEN
+    RETURN json_build_object('success', false, 'error', 'Código de invitación no válido');
+  END IF;
+
+  IF project_record.created_by = auth.uid() THEN
+    RETURN json_build_object('success', false, 'error', 'Ya eres el creador de este proyecto');
+  END IF;
+
+  SELECT id INTO existing_shared
+  FROM project_shared_users
+  WHERE project_id = project_record.id AND user_id = auth.uid();
+
+  IF existing_shared IS NOT NULL THEN
+    RETURN json_build_object('success', false, 'error', 'Ya formas parte de este proyecto');
+  END IF;
+
+  INSERT INTO project_shared_users (project_id, user_id, role)
+  VALUES (project_record.id, auth.uid(), COALESCE(project_record.invite_role, 'participant'));
+
+  RETURN json_build_object('success', true, 'project_id', project_record.id);
+END;
+$$;
+
+-- Cambiar rol de un usuario compartido (solo owner o admin)
+CREATE OR REPLACE FUNCTION update_shared_user_role(
+  p_project_id UUID, p_user_id UUID, p_new_role TEXT
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  IF NOT (
+    EXISTS (SELECT 1 FROM projects WHERE id = p_project_id AND created_by = auth.uid())
+    OR is_project_admin(p_project_id)
+  ) THEN
+    RETURN json_build_object('success', false, 'error', 'No tienes permisos');
+  END IF;
+
+  IF p_new_role NOT IN ('admin', 'participant') THEN
+    RETURN json_build_object('success', false, 'error', 'Rol no válido');
+  END IF;
+
+  UPDATE project_shared_users SET role = p_new_role
+  WHERE project_id = p_project_id AND user_id = p_user_id;
+
+  RETURN json_build_object('success', true);
+END;
+$$;
 
 -- =============================================
 -- FUNCIÓN PARA CREAR PERFIL AUTOMÁTICAMENTE

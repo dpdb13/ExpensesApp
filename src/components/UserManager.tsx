@@ -3,10 +3,12 @@ import { useApp } from '../context/AppContext';
 import type { User } from '../types';
 
 export function UserManager() {
-  const { activeProject, addUser, removeUser } = useApp();
+  const { activeProject, addUser, removeUser, canEdit, isClosed } = useApp();
   const [newUserName, setNewUserName] = useState('');
 
   if (!activeProject) return null;
+
+  const showEditControls = canEdit && !isClosed;
 
   const handleAddUser = (e: FormEvent) => {
     e.preventDefault();
@@ -33,18 +35,20 @@ export function UserManager() {
     <div className="user-manager">
       <h3>Participantes ({activeProject.users.length})</h3>
 
-      <form onSubmit={handleAddUser} className="add-user-form">
-        <input
-          type="text"
-          value={newUserName}
-          onChange={(e) => setNewUserName(e.target.value)}
-          placeholder="Nombre del participante"
-          className="input"
-        />
-        <button type="submit" className="btn btn-primary" disabled={!newUserName.trim()}>
-          Añadir
-        </button>
-      </form>
+      {showEditControls && (
+        <form onSubmit={handleAddUser} className="add-user-form">
+          <input
+            type="text"
+            value={newUserName}
+            onChange={(e) => setNewUserName(e.target.value)}
+            placeholder="Nombre del participante"
+            className="input"
+          />
+          <button type="submit" className="btn btn-primary" disabled={!newUserName.trim()}>
+            Añadir
+          </button>
+        </form>
+      )}
 
       {activeProject.users.length === 0 ? (
         <div className="empty-message">
@@ -61,13 +65,15 @@ export function UserManager() {
               <div className="user-card-info">
                 <span className="user-card-name">{user.name}</span>
               </div>
-              <button
-                onClick={() => removeUser(user.id)}
-                className="user-card-delete"
-                title="Eliminar participante"
-              >
-                ×
-              </button>
+              {showEditControls && (
+                <button
+                  onClick={() => removeUser(user.id)}
+                  className="user-card-delete"
+                  title="Eliminar participante"
+                >
+                  ×
+                </button>
+              )}
             </div>
           ))}
         </div>

@@ -38,11 +38,13 @@ src/
     supabase.ts       - Cliente de Supabase
   types.ts            - Tipos TypeScript
 public/
-  manifest-v2.json    - Manifest PWA
+  manifest-v11.json   - Manifest PWA
   sw.js               - Service Worker
   logo.png            - Logo de la app
-  icon-192-v3.png     - Icono PWA 192x192
-  icon-512-v3.png     - Icono PWA 512x512
+  icon-192-v11.png    - Icono PWA 192x192
+  icon-512-v11.png    - Icono PWA 512x512
+  icon-maskable-*.png - Iconos maskable para Android
+  apple-touch-icon.png - Icono para iOS
 ```
 
 ## Base de datos (Supabase)
@@ -63,10 +65,24 @@ npx gh-pages -d dist  # Desplegar a GitHub Pages
 
 ## Decisiones tecnicas importantes
 - **ON DELETE CASCADE en FKs a auth.users/profiles**: El 15 feb 2026 se alteraron 4 FKs que no tenian CASCADE, lo que impedia borrar usuarios desde el dashboard de Supabase. FKs afectadas: `profiles.id`, `projects.created_by`, `project_members.user_id` (SET NULL), `expenses.created_by`. Ahora borrar un usuario borra en cascada todos sus datos.
+- **History API para navegacion nativa (swipe back)**: pushState al entrar en proyecto, popstate para volver. Dependencia por `activeProject?.id` (no por referencia) para evitar pushes duplicados al añadir gastos/usuarios. Patron copiado de Basketball y Lysto.
+- **Confirmacion al salir con formulario dirty**: `ExpenseForm` avisa a `App.tsx` via prop `onDirtyChange` cuando amount o title tienen datos. Cleanup en unmount para limpiar al cambiar de tab. Modal centrado con overlay.
+- **replaceState tras borrar proyecto**: evita entradas huerfanas en el historial.
 
 ## Historial de sesiones
 
-### 15 Febrero 2026
+### 15 Febrero 2026 (sesion 2)
+- Navegacion por swipe (History API) implementada: pushState/popstate con debounce (navGuardRef + requestAnimationFrame)
+- Confirmacion al salir si el formulario de gastos tiene datos sin guardar
+- Proteccion PWA: re-push en lista de proyectos para no salir de la app
+- ProjectHeader.handleBack cambiado de selectProject(null) a window.history.back()
+- Bugs encontrados y corregidos en code review (Opus):
+  - Push duplicado: dependencia cambiada de activeProject (referencia) a activeProject?.id (valor estable)
+  - Historial huerfano al borrar proyecto: replaceState tras delete
+  - formDirtyRef no se limpiaba al cambiar de tab: cleanup en unmount de ExpenseForm
+- Cache v14→v15, desplegado a GitHub Pages, commit y push
+
+### 15 Febrero 2026 (sesion 1)
 - Fix: foreign keys a `auth.users` y `profiles` sin ON DELETE CASCADE impedian borrar usuarios desde Supabase dashboard. Alteradas 4 constraints (profiles→CASCADE, projects→CASCADE, project_members→SET NULL, expenses→CASCADE)
 
 ### 3 Febrero 2026
