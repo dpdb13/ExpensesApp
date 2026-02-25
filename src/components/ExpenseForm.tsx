@@ -66,11 +66,16 @@ export function ExpenseForm({ editExpense, onClose }: ExpenseFormProps) {
   const isEditing = !!editExpense;
 
   const handleUserToggle = (userId: string) => {
-    setSelectedUsers((prev) =>
-      prev.includes(userId)
+    setSelectedUsers((prev) => {
+      // Si todos seleccionados y pinchas uno → solo ese
+      if (prev.length === users.length) {
+        return [userId];
+      }
+      // Si no, toggle normal
+      return prev.includes(userId)
         ? prev.filter((id) => id !== userId)
-        : [...prev, userId]
-    );
+        : [...prev, userId];
+    });
   };
 
   const handlePercentageChange = (userId: string, value: string) => {
