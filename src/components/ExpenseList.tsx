@@ -184,8 +184,8 @@ export function ExpenseList({ onEditExpense }: ExpenseListProps) {
 
       {/* Modal de detalle del gasto */}
       {viewingExpense && (
-        <div className="modal-overlay" onClick={() => setViewingExpense(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay expense-detail-overlay" onClick={() => setViewingExpense(null)}>
+          <div className="modal-content expense-detail-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h4>Detalle del gasto</h4>
               <button

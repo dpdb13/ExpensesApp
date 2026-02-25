@@ -2063,7 +2063,7 @@
    ============================================ */
 .fab {
   position: fixed;
-  bottom: calc(48px + env(safe-area-inset-bottom));
+  bottom: calc(80px + env(safe-area-inset-bottom));
   right: 24px;
   width: 56px;
   height: 56px;
@@ -2091,16 +2091,34 @@
 /* ============================================
    EXPENSE FORM MODAL
    ============================================ */
+/* Overlay compartido para modales de gasto (centrados) */
+.expense-detail-overlay,
 .expense-form-overlay {
-  z-index: 1100;
-  align-items: flex-start;
-  padding-top: calc(8px + env(safe-area-inset-top));
+  align-items: center;
+  padding: 24px 12px;
 }
 
+.expense-form-overlay {
+  z-index: 1100;
+}
+
+.expense-detail-modal,
 .expense-form-modal {
-  max-height: 95vh;
+  max-height: 85vh;
   border-radius: var(--radius-xl);
-  margin: 0 8px;
+  margin: 0;
+  animation: zoomIn 0.25s ease-out;
+}
+
+@keyframes zoomIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .split-modal-overlay {
@@ -2274,6 +2292,11 @@
   .modal-overlay {
     align-items: center;
     padding: 20px;
+  }
+
+  .expense-detail-modal,
+  .expense-form-modal {
+    max-width: 480px;
   }
 
   .expense-item-payer {
