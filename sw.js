@@ -1,4 +1,4 @@
-const CACHE_NAME = 'splitly-v26';
+const CACHE_NAME = 'splitly-v27';
 const STATIC_ASSETS = [
   '/ExpensesApp/',
   '/ExpensesApp/index.html',
