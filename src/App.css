@@ -1523,6 +1523,22 @@
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.expense-card-split-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.expense-recurring-badge {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  line-height: 1.2;
+  opacity: 0.85;
 }
 
 .expense-split-info {
@@ -1921,6 +1937,18 @@
   background: var(--surface-hover);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-color);
+  width: 100%;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+  transition: background var(--transition-fast);
+}
+
+.month-expense-item:hover,
+.month-expense-item:active {
+  background: var(--surface-elevated);
 }
 
 .expense-item-date {
@@ -2784,4 +2812,130 @@
   font-size: 0.85rem;
   color: var(--text-muted);
   line-height: 1.5;
+}
+
+/* ============================================
+   NOTAS DE GASTOS
+   ============================================ */
+.expense-notes-input {
+  resize: vertical;
+  min-height: 44px;
+  font-family: inherit;
+  line-height: 1.45;
+}
+
+.expense-detail-notes {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: var(--surface-hover);
+  border-radius: var(--radius-md);
+}
+
+.expense-detail-notes-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.expense-detail-notes-text {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ============================================
+   GASTOS RECURRENTES EN EL RESUMEN
+   ============================================ */
+.recurring-section {
+  margin-bottom: 24px;
+}
+
+.recurring-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 10px;
+  padding: 0;
+  margin-bottom: 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-primary);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.recurring-toggle-title {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.recurring-toggle-chevron {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  transition: transform var(--transition-fast);
+}
+
+.recurring-toggle-chevron.open {
+  transform: rotate(180deg);
+}
+
+.recurring-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recurring-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  transition: background var(--transition-fast);
+}
+
+.recurring-card:hover,
+.recurring-card:active {
+  background: var(--surface-hover);
+}
+
+.recurring-card-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.recurring-card-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recurring-card-freq {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.recurring-card-amount {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  flex-shrink: 0;
 }

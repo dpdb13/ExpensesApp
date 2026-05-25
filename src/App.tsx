@@ -186,7 +186,7 @@ function App() {
           <ExpenseList onEditExpense={openEditExpense} />
         )}
         {activeTab === 'participantes' && <UserManager />}
-        {activeTab === 'resumen' && <Summary />}
+        {activeTab === 'resumen' && <Summary onEditExpense={openEditExpense} />}
       </main>
 
       {/* Boton flotante + para añadir gasto */}

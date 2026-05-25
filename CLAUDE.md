@@ -71,6 +71,15 @@ npx gh-pages -d dist  # Desplegar a GitHub Pages
 
 ## Historial de sesiones
 
+### 25 Mayo 2026 (sesión 3 — notas, recurrentes y detalle reutilizable)
+- **Notas en gastos**: columna `expenses.notes` (TEXT, vía `apply_migration`). Campo opcional en ExpenseForm (textarea), se muestra en el detalle del gasto si existe. types.ts: `notes?: string`. AppContext: carga + insert/update.
+- **Símbolo recurrente 🔁 en la tarjeta** (ExpenseList): badge a la derecha en la línea de "Dividido entre N personas" (`.expense-card-split` ahora flex space-between con `.expense-card-split-info` + `.expense-recurring-badge`). Único = nada. No tocó BD (el dato `expenseType==='recurring'` ya existía).
+- **Sección "Gastos recurrentes" plegable en el Resumen** (Summary, vista General): toggle expandir/contraer (chevron ▾), lista cada recurrente con frecuencia e importe. Solo aparece si los hay.
+- **Detalle reutilizable**: extraído el popup de detalle a `ExpenseDetailModal.tsx` (un solo sitio, principio "no duplicar"). Lo usan ExpenseList, la sección de recurrentes y la lista "Por Mes" del Resumen. Summary recibe `onEditExpense` desde App.tsx para poder editar desde ahí.
+- **Gastos clicables en Resumen**: tanto recurrentes (General) como la lista mensual (Por Mes) abren el detalle y permiten editar.
+- **Rama renombrada**: `claude/expense-sharing-app-83bhK` → `main` (push + default branch en GitHub + borrado de la vieja). Deploy desde gh-pages, independiente.
+- **Caché v29 → v30**.
+
 ### 25 Mayo 2026 (sesión 2 — resumen personal por gasto, estilo Splitwise)
 - **Feature nueva**: cada gasto muestra la perspectiva del usuario logueado (4 estados): "Debes X €" (rojo), "Te deben X €" (verde), "No has participado" (gris), "Pagaste" (gris, gasto solo para ti). El total pasa a la línea de info ("Álvaro pagó 80 €" / "Tú pagaste 60 €"). Settlements no llevan perspectiva.
 - **Vinculación cuenta↔participante**: la columna `project_members.user_id` (existía vacía) ahora se usa. Cada usuario "reclama" su nombre la 1ª vez vía modal `WhoAmI` (pre-marca el nombre más parecido a su `display_name`/email). Se guarda en la nube → sincroniza entre dispositivos.

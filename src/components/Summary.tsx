@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { CURRENCIES, type User, type Expense } from '../types';
+import { ExpenseDetailModal } from './ExpenseDetailModal';
+
+interface SummaryProps {
+  onEditExpense: (expense: Expense) => void;
+}
 
 interface Settlement {
   from: string;
@@ -10,11 +15,13 @@ interface Settlement {
 
 type SummaryView = 'general' | 'monthly';
 
-export function Summary() {
+export function Summary({ onEditExpense }: SummaryProps) {
   const { activeProject, getTotalExpenses, getUserBalance, getExpensesByMonth, getUserById, settleDebt, canEdit, isClosed } = useApp();
   const [view, setView] = useState<SummaryView>('general');
   const [settlingKey, setSettlingKey] = useState<string | null>(null);
   const [isSettling, setIsSettling] = useState(false);
+  const [recurringExpanded, setRecurringExpanded] = useState(true);
+  const [viewingExpense, setViewingExpense] = useState<Expense | null>(null);
 
   if (!activeProject) return null;
 
@@ -93,6 +100,11 @@ export function Summary() {
 
   const totalExpenses = getTotalExpenses();
   const settlements = calculateSettlements();
+
+  // Gastos recurrentes (para la sección del resumen)
+  const recurringExpenses = expenses.filter(e => e.expenseType === 'recurring');
+  const frequencyLabel = (f?: Expense['recurringFrequency']) =>
+    f === 'weekly' ? 'Semanal' : f === 'yearly' ? 'Anual' : 'Mensual';
 
   if (users.length === 0) {
     return null;
@@ -231,6 +243,41 @@ export function Summary() {
           )}
 
           {/* Balance por participante */}
+          {/* Gastos recurrentes (solo si los hay) — sección plegable */}
+          {recurringExpenses.length > 0 && (
+            <div className="recurring-section">
+              <button
+                type="button"
+                className="recurring-toggle"
+                onClick={() => setRecurringExpanded((v) => !v)}
+                aria-expanded={recurringExpanded}
+              >
+                <span className="recurring-toggle-title">🔁 Gastos recurrentes ({recurringExpenses.length})</span>
+                <span className={`recurring-toggle-chevron ${recurringExpanded ? 'open' : ''}`}>▾</span>
+              </button>
+              {recurringExpanded && (
+                <div className="recurring-list">
+                  {recurringExpenses.map((expense) => (
+                    <button
+                      key={expense.id}
+                      type="button"
+                      className="recurring-card"
+                      onClick={() => setViewingExpense(expense)}
+                    >
+                      <div className="recurring-card-info">
+                        <span className="recurring-card-title">{expense.title}</span>
+                        <span className="recurring-card-freq">{frequencyLabel(expense.recurringFrequency)}</span>
+                      </div>
+                      <span className="recurring-card-amount">
+                        {getCurrencySymbol(expense.currency)}{expense.amount.toFixed(2)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <h4>Balance por persona</h4>
           <div className="user-balances">
             {users.map((user: User, index: number) => {
@@ -312,7 +359,12 @@ export function Summary() {
                       .map((expense: Expense) => {
                         const payer = getUserById(expense.paidBy);
                         return (
-                          <div key={expense.id} className="month-expense-item">
+                          <button
+                            key={expense.id}
+                            type="button"
+                            className="month-expense-item"
+                            onClick={() => setViewingExpense(expense)}
+                          >
                             <span className="expense-item-date">{formatDateShort(expense.date)}</span>
                             <div className="expense-item-info">
                               <span className="expense-item-title">{expense.title}</span>
@@ -321,7 +373,7 @@ export function Summary() {
                             <span className="expense-item-amount">
                               {getCurrencySymbol(expense.currency)} {expense.amount.toFixed(2)}
                             </span>
-                          </div>
+                          </button>
                         );
                       })}
                   </div>
@@ -335,6 +387,15 @@ export function Summary() {
             });
           })()}
         </div>
+      )}
+
+      {/* Detalle del gasto (al tocar un recurrente) */}
+      {viewingExpense && (
+        <ExpenseDetailModal
+          expense={viewingExpense}
+          onClose={() => setViewingExpense(null)}
+          onEdit={onEditExpense}
+        />
       )}
     </div>
   );

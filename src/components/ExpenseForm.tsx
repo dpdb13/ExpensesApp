@@ -15,6 +15,7 @@ export function ExpenseForm({ editExpense, onClose }: ExpenseFormProps) {
 
   const [amount, setAmount] = useState('');
   const [title, setTitle] = useState('');
+  const [notes, setNotes] = useState('');
   const [currency, setCurrency] = useState(defaultCurrency);
   const [paidBy, setPaidBy] = useState('');
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
@@ -39,6 +40,7 @@ export function ExpenseForm({ editExpense, onClose }: ExpenseFormProps) {
     if (editExpense) {
       setAmount(editExpense.amount.toString());
       setTitle(editExpense.title);
+      setNotes(editExpense.notes || '');
       setCurrency(editExpense.currency);
       setPaidBy(editExpense.paidBy);
       setSelectedUsers(editExpense.shares.map(s => s.userId));
@@ -132,6 +134,7 @@ export function ExpenseForm({ editExpense, onClose }: ExpenseFormProps) {
     const expenseData = {
       amount: parseFloat(amount),
       title,
+      notes: notes.trim() || undefined,
       currency,
       date: expenseType === 'recurring' ? recurringStartDate : date,
       paidBy,
@@ -229,6 +232,17 @@ export function ExpenseForm({ editExpense, onClose }: ExpenseFormProps) {
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Por ejemplo, supermercado"
                 className="input"
+              />
+            </div>
+
+            {/* Notas (opcional) */}
+            <div className="form-group">
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Notas (opcional)"
+                className="input expense-notes-input"
+                rows={2}
               />
             </div>
 

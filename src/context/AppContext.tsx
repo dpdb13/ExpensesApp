@@ -174,6 +174,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 id: expense.id,
                 amount: parseFloat(expense.amount),
                 title: expense.title,
+                notes: expense.notes || undefined,
                 currency: expense.currency,
                 date: expense.date,
                 paidBy: expense.paid_by_member_id,
@@ -404,6 +405,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .insert({
           project_id: activeProject.id,
           title: expense.title,
+          notes: expense.notes || null,
           amount: expense.amount,
           currency: expense.currency,
           date: expense.date,
@@ -458,6 +460,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .from('expenses')
         .update({
           title: expenseData.title,
+          notes: expenseData.notes || null,
           amount: expenseData.amount,
           currency: expenseData.currency,
           date: expenseData.date,
