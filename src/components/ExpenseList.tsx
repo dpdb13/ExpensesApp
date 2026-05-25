@@ -216,7 +216,7 @@ export function ExpenseList({ onEditExpense }: ExpenseListProps) {
                       </div>
                     )}
                   </div>
-                  {expense.expenseType === 'recurring' && (
+                  {(expense.expenseType === 'recurring' || expense.recurringParentId) && (
                     <span className="expense-recurring-badge" title="Gasto recurrente" aria-label="Gasto recurrente">🔁</span>
                   )}
                 </div>

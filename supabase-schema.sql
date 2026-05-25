@@ -345,3 +345,98 @@ ALTER PUBLICATION supabase_realtime ADD TABLE projects;
 ALTER PUBLICATION supabase_realtime ADD TABLE project_members;
 ALTER PUBLICATION supabase_realtime ADD TABLE expenses;
 ALTER PUBLICATION supabase_realtime ADD TABLE expense_shares;
+
+-- =============================================
+-- MIGRACIONES APLICADAS (mayo 2026) — aplicadas vía MCP, reflejadas aquí
+-- =============================================
+
+-- Vincular cuenta logueada <-> participante ("¿quién eres?")
+CREATE OR REPLACE FUNCTION claim_member(member_id_input UUID)
+RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+  member_record RECORD;
+  has_access BOOLEAN;
+BEGIN
+  SELECT id, project_id, user_id INTO member_record
+  FROM project_members WHERE id = member_id_input;
+  IF member_record IS NULL THEN
+    RETURN json_build_object('success', false, 'error', 'Participante no encontrado');
+  END IF;
+  SELECT (
+    EXISTS (SELECT 1 FROM projects WHERE id = member_record.project_id AND created_by = auth.uid())
+    OR EXISTS (SELECT 1 FROM project_shared_users WHERE project_id = member_record.project_id AND user_id = auth.uid())
+  ) INTO has_access;
+  IF NOT has_access THEN
+    RETURN json_build_object('success', false, 'error', 'No tienes acceso a este grupo');
+  END IF;
+  IF member_record.user_id IS NOT NULL AND member_record.user_id <> auth.uid() THEN
+    RETURN json_build_object('success', false, 'error', 'Ese participante ya está vinculado a otra cuenta');
+  END IF;
+  UPDATE project_members SET user_id = NULL
+  WHERE project_id = member_record.project_id AND user_id = auth.uid() AND id <> member_id_input;
+  UPDATE project_members SET user_id = auth.uid() WHERE id = member_id_input;
+  RETURN json_build_object('success', true);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION unclaim_member(p_project_id UUID)
+RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  UPDATE project_members SET user_id = NULL
+  WHERE project_id = p_project_id AND user_id = auth.uid();
+  RETURN json_build_object('success', true);
+END;
+$$;
+
+-- Notas en gastos
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS notes TEXT;
+
+-- Recurrencia real (generación automática)
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS recurring_parent_id UUID REFERENCES expenses(id) ON DELETE SET NULL;
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS recurring_last_generated DATE;
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_recurring_occurrence ON expenses (recurring_parent_id, date);
+
+-- Genera las repeticiones de los gastos recurrentes. La llama pg_cron a diario.
+-- Ancla cada ocurrencia a recurring_start_date (anchor + n*intervalo) para evitar
+-- deriva de día en meses con < 31 días.
+CREATE OR REPLACE FUNCTION generate_recurring_expenses()
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $fn$
+DECLARE
+  tmpl RECORD; anchor DATE; last_gen DATE; step INTERVAL; n INT; occ_date DATE; max_gen DATE; new_id UUID;
+BEGIN
+  FOR tmpl IN SELECT * FROM expenses WHERE expense_type = 'recurring' AND recurring_parent_id IS NULL LOOP
+    step := CASE tmpl.recurring_frequency
+      WHEN 'weekly' THEN INTERVAL '1 week' WHEN 'yearly' THEN INTERVAL '1 year' ELSE INTERVAL '1 month' END;
+    anchor := COALESCE(tmpl.recurring_start_date, tmpl.date);
+    last_gen := COALESCE(tmpl.recurring_last_generated, CURRENT_DATE);
+    max_gen := last_gen;
+    n := 1;
+    LOOP
+      occ_date := (anchor + (step * n))::date;
+      EXIT WHEN occ_date > CURRENT_DATE;
+      IF occ_date > last_gen THEN
+        INSERT INTO expenses (project_id, title, notes, amount, currency, date,
+          paid_by_member_id, split_type, expense_type, recurring_parent_id, created_by)
+        VALUES (tmpl.project_id, tmpl.title, tmpl.notes, tmpl.amount, tmpl.currency, occ_date,
+          tmpl.paid_by_member_id, tmpl.split_type, 'one-off', tmpl.id, tmpl.created_by)
+        ON CONFLICT (recurring_parent_id, date) DO NOTHING
+        RETURNING id INTO new_id;
+        IF new_id IS NOT NULL THEN
+          INSERT INTO expense_shares (expense_id, member_id, percentage, amount)
+          SELECT new_id, member_id, percentage, amount FROM expense_shares WHERE expense_id = tmpl.id;
+        END IF;
+        new_id := NULL;
+        IF occ_date > max_gen THEN max_gen := occ_date; END IF;
+      END IF;
+      n := n + 1;
+    END LOOP;
+    IF max_gen > last_gen THEN
+      UPDATE expenses SET recurring_last_generated = max_gen WHERE id = tmpl.id;
+    END IF;
+  END LOOP;
+END;
+$fn$;
+
+-- Robot diario (pg_cron)
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+-- SELECT cron.schedule('generate-recurring-expenses', '0 3 * * *', 'SELECT generate_recurring_expenses();');

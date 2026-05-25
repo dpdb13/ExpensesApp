@@ -35,6 +35,7 @@ export interface DbExpense {
   id: string;
   project_id: string;
   title: string;
+  notes?: string | null;
   amount: number;
   currency: string;
   date: string;
@@ -44,6 +45,8 @@ export interface DbExpense {
   expense_type: 'one-off' | 'recurring' | 'settlement';
   recurring_frequency?: 'weekly' | 'monthly' | 'yearly';
   recurring_start_date?: string;
+  recurring_parent_id?: string | null; // si es una copia generada de un recurrente
+  recurring_last_generated?: string | null; // hasta qué fecha se han generado copias (en la plantilla)
   created_by: string;
   created_at: string;
 }

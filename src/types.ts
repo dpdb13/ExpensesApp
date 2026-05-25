@@ -25,6 +25,7 @@ export interface Expense {
   expenseType: ExpenseType;
   recurringFrequency?: RecurringFrequency;
   recurringStartDate?: string;
+  recurringParentId?: string | null; // si es una copia generada automáticamente de un recurrente
 }
 
 export interface Project {

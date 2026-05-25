@@ -71,6 +71,19 @@ npx gh-pages -d dist  # Desplegar a GitHub Pages
 
 ## Historial de sesiones
 
+### 25 Mayo 2026 (sesión 4 — recurrencia REAL, generación automática)
+- **"Recurrente" pasa de etiqueta a funcionalidad real.** Antes solo se mostraba el 🔁; ahora un robot diario genera las repeticiones.
+- **Backend (Supabase)**:
+  - Columnas `expenses.recurring_parent_id` (FK a expenses, ON DELETE SET NULL → al borrar la plantilla las copias se quedan como gastos normales) y `expenses.recurring_last_generated` (DATE, marca hasta dónde se ha generado).
+  - Índice único `(recurring_parent_id, date)` → anti-duplicados (los NULL no chocan, no afecta a gastos normales).
+  - Función `generate_recurring_expenses()` (SECURITY DEFINER): por cada plantilla (`expense_type='recurring'` AND `recurring_parent_id IS NULL`), crea las ocurrencias que toquen copiando importe/notas/reparto, marcadas como `one-off` con `recurring_parent_id`.
+  - **pg_cron** activado + job `generate-recurring-expenses` diario a las 03:00.
+- **Decisiones**: la plantilla = primera ocurrencia; se repite hasta borrarla; al borrar, las copias pasadas se quedan; recurrentes EXISTENTES marcados con `recurring_last_generated=hoy` para NO rellenar histórico.
+- **BUG encontrado en code review adversarial y arreglado**: la función calculaba cada fecha sumando un mes a la anterior → **deriva** (un día 31 se quedaba clavado en 28 tras febrero) y cambiaba el día de cobro de los existentes. Arreglado anclando al `recurring_start_date` original (`anchor + n*intervalo`). Verificado: 31-ene → 28-feb, 31-mar, 30-abr (sin deriva).
+- **Frontend**: `recurringParentId` en el tipo Expense + carga; al crear un recurrente se setea `recurring_last_generated=fecha_inicio`; el 🔁 ahora también en las copias generadas; DbExpense actualizado.
+- **Pendiente de probar end-to-end** por Diego (crear recurrente con fecha pasada + ejecutar robot manualmente).
+- **Caché v30 → v31**.
+
 ### 25 Mayo 2026 (sesión 3 — notas, recurrentes y detalle reutilizable)
 - **Notas en gastos**: columna `expenses.notes` (TEXT, vía `apply_migration`). Campo opcional en ExpenseForm (textarea), se muestra en el detalle del gasto si existe. types.ts: `notes?: string`. AppContext: carga + insert/update.
 - **Símbolo recurrente 🔁 en la tarjeta** (ExpenseList): badge a la derecha en la línea de "Dividido entre N personas" (`.expense-card-split` ahora flex space-between con `.expense-card-split-info` + `.expense-recurring-badge`). Único = nada. No tocó BD (el dato `expenseType==='recurring'` ya existía).

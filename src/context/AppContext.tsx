@@ -187,6 +187,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 expenseType: expense.expense_type as Expense['expenseType'],
                 recurringFrequency: expense.recurring_frequency,
                 recurringStartDate: expense.recurring_start_date,
+                recurringParentId: expense.recurring_parent_id,
               };
             })
           );
@@ -414,6 +415,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           expense_type: expense.expenseType || 'one-off',
           recurring_frequency: expense.recurringFrequency,
           recurring_start_date: expense.recurringStartDate,
+          // marca desde cuándo el robot debe empezar a generar copias
+          recurring_last_generated: expense.expenseType === 'recurring'
+            ? (expense.recurringStartDate || expense.date)
+            : null,
           created_by: user.id,
         })
         .select()
