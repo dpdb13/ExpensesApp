@@ -2,23 +2,11 @@ import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { CreateGroup } from './CreateGroup';
-import { CURRENCIES } from '../types';
 
 export function ProjectList() {
   const { state, selectProject } = useApp();
   const { user, signOut } = useAuth();
   const [isCreating, setIsCreating] = useState(false);
-
-  const getCurrencySymbol = (code: string) => {
-    const currency = CURRENCIES.find((c) => c.code === code);
-    return currency?.symbol || code;
-  };
-
-  const getProjectTotal = (projectId: string) => {
-    const project = state.projects.find((p) => p.id === projectId);
-    if (!project) return 0;
-    return project.expenses.reduce((sum, e) => sum + e.amount, 0);
-  };
 
   if (isCreating) {
     return <CreateGroup onCancel={() => setIsCreating(false)} />;
@@ -73,9 +61,6 @@ export function ProjectList() {
               </div>
             </div>
             <div className="project-card-total-container">
-              <span className="project-card-total">
-                {getCurrencySymbol(project.defaultCurrency)}{getProjectTotal(project.id).toFixed(0)}
-              </span>
               <span className="project-card-arrow">→</span>
             </div>
           </button>
@@ -116,9 +101,6 @@ export function ProjectList() {
                 </div>
                 <div className="project-card-total-container">
                   <span className="closed-badge-small">Cerrado</span>
-                  <span className="project-card-total">
-                    {getCurrencySymbol(project.defaultCurrency)}{getProjectTotal(project.id).toFixed(0)}
-                  </span>
                 </div>
               </button>
             ))}

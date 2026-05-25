@@ -3,6 +3,10 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import type { Expense, ExpenseShare } from '../types';
 
+// Longitud del código de invitación. La columna projects.invite_code en Supabase
+// es TEXT (sin límite). Si cambias este número, sigue funcionando sin migración.
+const INVITE_CODE_LENGTH = 12;
+
 // Tipos para la app
 type ProjectRole = 'owner' | 'admin' | 'participant';
 
@@ -22,6 +26,7 @@ interface Project {
 interface User {
   id: string;
   name: string;
+  userId: string | null; // cuenta vinculada a este participante (null si nadie lo ha reclamado)
 }
 
 interface AppState {
@@ -55,9 +60,13 @@ interface AppContextType {
   refreshData: () => Promise<void>;
   generateInviteLink: () => Promise<string | null>;
   joinProject: (inviteCode: string) => Promise<{ success: boolean; error?: string }>;
+  settleDebt: (fromId: string, toId: string, amount: number) => Promise<boolean>;
   closeProject: () => Promise<void>;
   reopenProject: () => Promise<void>;
   updateInviteRole: (role: 'admin' | 'participant') => Promise<void>;
+  claimMember: (memberId: string) => Promise<{ success: boolean; error?: string }>;
+  unclaimMember: () => Promise<{ success: boolean; error?: string }>;
+  myMemberId: string | null;
   canEdit: boolean;
   canDelete: boolean;
   isClosed: boolean;
@@ -85,6 +94,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const canEdit = activeProject?.role === 'owner' || activeProject?.role === 'admin';
   const canDelete = activeProject?.role === 'owner';
   const isClosed = activeProject?.closedAt != null;
+
+  // Qué participante del proyecto activo es la cuenta logueada (null si aún no se ha vinculado)
+  const myMemberId = useMemo(() => {
+    if (!user || !activeProject) return null;
+    return activeProject.users.find(u => u.userId === user.id)?.id ?? null;
+  }, [user, activeProject]);
 
   // Cargar proyectos del usuario
   const loadProjects = useCallback(async () => {
@@ -168,7 +183,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   amount: parseFloat(s.amount),
                 })),
                 splitType: expense.split_type as 'equal' | 'custom',
-                expenseType: expense.expense_type as 'one-off' | 'recurring',
+                expenseType: expense.expense_type as Expense['expenseType'],
                 recurringFrequency: expense.recurring_frequency,
                 recurringStartDate: expense.recurring_start_date,
               };
@@ -183,6 +198,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             users: (members || []).map(m => ({
               id: m.id,
               name: m.participant_name,
+              userId: m.user_id,
             })),
             expenses: expensesWithShares,
             inviteCode: project.invite_code || null,
@@ -206,6 +222,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const refreshData = async () => {
     await loadProjects();
+  };
+
+  // Vincular la cuenta logueada a un participante del proyecto activo ("yo soy X")
+  const claimMember = async (memberId: string): Promise<{ success: boolean; error?: string }> => {
+    if (!user) return { success: false, error: 'Debes iniciar sesión' };
+    try {
+      const { data, error } = await supabase.rpc('claim_member', { member_id_input: memberId });
+      if (error) {
+        console.error('claim_member RPC error:', error);
+        return { success: false, error: 'Error al vincular tu nombre' };
+      }
+      if (!data.success) {
+        return { success: false, error: data.error };
+      }
+      await loadProjects();
+      return { success: true };
+    } catch (error) {
+      console.error('Error claiming member:', error);
+      return { success: false, error: 'Error al vincular tu nombre' };
+    }
+  };
+
+  // Soltar la vinculación de la cuenta logueada en el proyecto activo
+  const unclaimMember = async (): Promise<{ success: boolean; error?: string }> => {
+    if (!user || !activeProject) return { success: false, error: 'No hay grupo activo' };
+    try {
+      const { error } = await supabase.rpc('unclaim_member', { p_project_id: activeProject.id });
+      if (error) {
+        console.error('unclaim_member RPC error:', error);
+        return { success: false, error: 'Error al desvincular' };
+      }
+      await loadProjects();
+      return { success: true };
+    } catch (error) {
+      console.error('Error unclaiming member:', error);
+      return { success: false, error: 'Error al desvincular' };
+    }
   };
 
   const createProject = async (name: string, icon: string = '✈️', currency: string = 'EUR', participants: string[] = []) => {
@@ -307,7 +360,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ...prev,
         projects: prev.projects.map(p =>
           p.id === activeProject.id
-            ? { ...p, users: [...p.users, { id: member.id, name: member.participant_name }] }
+            ? { ...p, users: [...p.users, { id: member.id, name: member.participant_name, userId: member.user_id }] }
             : p
         ),
       }));
@@ -621,13 +674,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const settleDebt = async (fromId: string, toId: string, amount: number): Promise<boolean> => {
+    if (!activeProject || !user || activeProject.closedAt) return false;
+
+    const fromUser = activeProject.users.find(u => u.id === fromId);
+    const toUser = activeProject.users.find(u => u.id === toId);
+    if (!fromUser || !toUser) return false;
+
+    const settlementExpense: Omit<Expense, 'id'> = {
+      amount,
+      title: `Pago: ${fromUser.name} → ${toUser.name}`,
+      currency: activeProject.defaultCurrency,
+      date: new Date().toISOString().split('T')[0],
+      paidBy: fromId,
+      shares: [{ userId: toId, percentage: 100, amount }],
+      splitType: 'custom',
+      expenseType: 'settlement',
+    };
+
+    return addExpense(settlementExpense);
+  };
+
   const getUserById = (id: string) => {
     return activeProject?.users.find(u => u.id === id);
   };
 
   const getTotalExpenses = () => {
     if (!activeProject) return 0;
-    return activeProject.expenses.reduce((sum, e) => sum + e.amount, 0);
+    return activeProject.expenses
+      .filter(e => e.expenseType !== 'settlement')
+      .reduce((sum, e) => sum + e.amount, 0);
   };
 
   const getUserBalance = (userId: string) => {
@@ -664,14 +740,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (activeProject.role === 'participant') return null;
 
     try {
-      // Si ya tiene código, devolverlo
       if (activeProject.inviteCode) {
         return `${window.location.origin}/ExpensesApp/?join=${activeProject.inviteCode}`;
       }
 
-      // Generar código seguro de 12 caracteres (sin I/1/O/0 para evitar confusión)
+      // Sin I/1/O/0 para evitar confusión visual
       const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-      const array = new Uint8Array(12);
+      const array = new Uint8Array(INVITE_CODE_LENGTH);
       crypto.getRandomValues(array);
       const code = Array.from(array, b => chars[b % chars.length]).join('');
 
@@ -682,7 +757,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
 
-      // Actualizar estado local
       setState(prev => ({
         ...prev,
         projects: prev.projects.map(p =>
@@ -753,9 +827,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         refreshData,
         generateInviteLink,
         joinProject,
+        settleDebt,
         closeProject,
         reopenProject,
         updateInviteRole,
+        claimMember,
+        unclaimMember,
+        myMemberId,
         canEdit,
         canDelete,
         isClosed,

@@ -11,8 +11,10 @@ interface Settlement {
 type SummaryView = 'general' | 'monthly';
 
 export function Summary() {
-  const { activeProject, getTotalExpenses, getUserBalance, getExpensesByMonth, getUserById } = useApp();
+  const { activeProject, getTotalExpenses, getUserBalance, getExpensesByMonth, getUserById, settleDebt, canEdit, isClosed } = useApp();
   const [view, setView] = useState<SummaryView>('general');
+  const [settlingKey, setSettlingKey] = useState<string | null>(null);
+  const [isSettling, setIsSettling] = useState(false);
 
   if (!activeProject) return null;
 
@@ -126,7 +128,7 @@ export function Summary() {
         </div>
         <div className="summary-header-meta">
           <span className="badge badge-neutral">
-            {expenses.length} gasto{expenses.length !== 1 ? 's' : ''}
+            {expenses.filter(e => e.expenseType !== 'settlement').length} gasto{expenses.filter(e => e.expenseType !== 'settlement').length !== 1 ? 's' : ''}
           </span>
           <span className="badge badge-neutral">
             {users.length} persona{users.length !== 1 ? 's' : ''}
@@ -147,6 +149,8 @@ export function Summary() {
                   const toUser = users.find(u => u.id === settlement.to);
                   const fromIndex = getUserIndex(settlement.from);
                   const toIndex = getUserIndex(settlement.to);
+                  const settlementKey = `${settlement.from}-${settlement.to}`;
+                  const isConfirming = settlingKey === settlementKey;
 
                   return (
                     <div key={index} className="settlement-card">
@@ -171,6 +175,44 @@ export function Summary() {
                         </div>
                         <span className="settlement-name">{toUser?.name}</span>
                       </div>
+
+                      {canEdit && !isClosed && (
+                        <div className="settlement-action">
+                          {isConfirming ? (
+                            <div className="settlement-confirm">
+                              <span className="settlement-confirm-text">
+                                ¿{fromUser?.name} ha pagado?
+                              </span>
+                              <button
+                                className="btn-confirm-yes"
+                                disabled={isSettling}
+                                onClick={async () => {
+                                  setIsSettling(true);
+                                  await settleDebt(settlement.from, settlement.to, settlement.amount);
+                                  setSettlingKey(null);
+                                  setIsSettling(false);
+                                }}
+                              >
+                                Si
+                              </button>
+                              <button
+                                className="btn-confirm-no"
+                                disabled={isSettling}
+                                onClick={() => setSettlingKey(null)}
+                              >
+                                No
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              className="settlement-settle-btn"
+                              onClick={() => setSettlingKey(settlementKey)}
+                            >
+                              Saldar
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -195,6 +237,15 @@ export function Summary() {
               const balance = getUserBalance(user.id);
               const isPositive = balance.balance > 0.01;
               const isNegative = balance.balance < -0.01;
+              // Calcular solo gastos reales (sin settlements) para el desglose
+              const realExpenses = expenses.filter(e => e.expenseType !== 'settlement');
+              const realPaid = realExpenses
+                .filter(e => e.paidBy === user.id)
+                .reduce((sum, e) => sum + e.amount, 0);
+              const realOwes = realExpenses.reduce((sum, e) => {
+                const share = e.shares.find(s => s.userId === user.id);
+                return sum + (share?.amount || 0);
+              }, 0);
 
               return (
                 <div key={user.id} className={`balance-card ${isPositive ? 'balance-card-positive' : ''} ${isNegative ? 'balance-card-negative' : ''}`}>
@@ -205,7 +256,7 @@ export function Summary() {
                     <div className="balance-card-user">
                       <span className="balance-card-name">{user.name}</span>
                       <span className="balance-card-subtitle">
-                        Pago {getCurrencySymbol(defaultCurrency)}{balance.paid.toFixed(2)}
+                        Pago {getCurrencySymbol(defaultCurrency)}{realPaid.toFixed(2)}
                       </span>
                     </div>
                     <div className={`balance-card-amount ${isPositive ? 'positive' : ''} ${isNegative ? 'negative' : ''}`}>
@@ -224,7 +275,7 @@ export function Summary() {
                       <span className="badge badge-neutral">En paz</span>
                     )}
                     <span className="balance-card-detail">
-                      Corresponde: {getCurrencySymbol(defaultCurrency)}{balance.owes.toFixed(2)}
+                      Corresponde: {getCurrencySymbol(defaultCurrency)}{realOwes.toFixed(2)}
                     </span>
                   </div>
                 </div>
@@ -243,7 +294,9 @@ export function Summary() {
               return <p className="empty-message-inline">No hay gastos para mostrar.</p>;
             }
             return Array.from(expensesByMonth.entries()).map(([monthKey, monthExpenses]: [string, Expense[]]) => {
-              const monthTotal = monthExpenses.reduce((sum: number, e: Expense) => sum + e.amount, 0);
+              const realMonthExpenses = monthExpenses.filter((e: Expense) => e.expenseType !== 'settlement');
+              if (realMonthExpenses.length === 0) return null;
+              const monthTotal = realMonthExpenses.reduce((sum: number, e: Expense) => sum + e.amount, 0);
               return (
                 <div key={monthKey} className="month-section">
                   <div className="month-header">
@@ -254,15 +307,17 @@ export function Summary() {
                   </div>
 
                   <div className="month-expenses">
-                    {monthExpenses
+                    {realMonthExpenses
                       .sort((a: Expense, b: Expense) => new Date(b.date).getTime() - new Date(a.date).getTime())
                       .map((expense: Expense) => {
                         const payer = getUserById(expense.paidBy);
                         return (
                           <div key={expense.id} className="month-expense-item">
                             <span className="expense-item-date">{formatDateShort(expense.date)}</span>
-                            <span className="expense-item-title">{expense.title}</span>
-                            <span className="expense-item-payer">({payer?.name})</span>
+                            <div className="expense-item-info">
+                              <span className="expense-item-title">{expense.title}</span>
+                              <span className="expense-item-payer">Pagado por: {payer?.name || 'Desconocido'}</span>
+                            </div>
                             <span className="expense-item-amount">
                               {getCurrencySymbol(expense.currency)} {expense.amount.toFixed(2)}
                             </span>
@@ -272,8 +327,8 @@ export function Summary() {
                   </div>
 
                   <div className="month-stats">
-                    <span>{monthExpenses.length} gasto{monthExpenses.length !== 1 ? 's' : ''}</span>
-                    <span>Media: {getCurrencySymbol(defaultCurrency)} {(monthTotal / monthExpenses.length).toFixed(2)}</span>
+                    <span>{realMonthExpenses.length} gasto{realMonthExpenses.length !== 1 ? 's' : ''}</span>
+                    <span>Media: {getCurrencySymbol(defaultCurrency)} {(monthTotal / realMonthExpenses.length).toFixed(2)}</span>
                   </div>
                 </div>
               );

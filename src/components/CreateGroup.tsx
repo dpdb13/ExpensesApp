@@ -42,8 +42,8 @@ export function CreateGroup({ onCancel }: CreateGroupProps) {
   return (
     <div className="create-group-container">
       <div className="create-group-header">
-        <button className="btn-back" onClick={onCancel}>
-          <span className="back-arrow">←</span>
+        <button className="btn-back" onClick={onCancel} aria-label="Volver">
+          ←
         </button>
         <h1>Nuevo Grupo</h1>
         <div className="step-indicator">

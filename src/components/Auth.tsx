@@ -1,13 +1,20 @@
 import { useState, type FormEvent } from 'react';
 import { useAuth } from '../context/AuthContext';
 
-type View = 'login' | 'register' | 'reset';
+type View = 'login' | 'register' | 'reset' | 'new-password';
 
-export function Auth() {
-  const { signIn, signUp, resetPassword } = useAuth();
-  const [view, setView] = useState<View>('login');
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+
+interface AuthProps {
+  initialView?: View;
+}
+
+export function Auth({ initialView = 'login' }: AuthProps) {
+  const { signIn, signUp, resetPassword, updatePassword } = useAuth();
+  const [view, setView] = useState<View>(initialView);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -27,8 +34,8 @@ export function Auth() {
           : error.message);
       }
     } else if (view === 'register') {
-      if (password.length < 6) {
-        setError('La contraseña debe tener al menos 6 caracteres');
+      if (!PASSWORD_REGEX.test(password)) {
+        setError('La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.');
         setLoading(false);
         return;
       }
@@ -45,6 +52,21 @@ export function Auth() {
         setError(error.message);
       } else {
         setMessage('Te hemos enviado un email para restablecer tu contraseña.');
+      }
+    } else if (view === 'new-password') {
+      if (!PASSWORD_REGEX.test(password)) {
+        setError('La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.');
+        setLoading(false);
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('Las contraseñas no coinciden.');
+        setLoading(false);
+        return;
+      }
+      const { error } = await updatePassword(password);
+      if (error) {
+        setError(error.message);
       }
     }
 
@@ -66,7 +88,7 @@ export function Auth() {
           <p>Gestiona gastos con tus amigos</p>
         </div>
 
-        {view !== 'reset' && (
+        {view !== 'reset' && view !== 'new-password' && (
           <div className="auth-tabs">
             <button
               className={`auth-tab ${view === 'login' ? 'active' : ''}`}
@@ -90,6 +112,13 @@ export function Auth() {
           </div>
         )}
 
+        {view === 'new-password' && (
+          <div className="auth-reset-header">
+            <h2>Crea tu nueva contraseña</h2>
+            <p>Al menos 8 caracteres, con una mayúscula, una minúscula y un número.</p>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="auth-form">
           {view === 'register' && (
             <div className="form-group">
@@ -105,21 +134,23 @@ export function Auth() {
             </div>
           )}
 
-          <div className="form-group">
-            <label>Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="tu@email.com"
-              className="input"
-              required
-            />
-          </div>
+          {view !== 'new-password' && (
+            <div className="form-group">
+              <label>Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="tu@email.com"
+                className="input"
+                required
+              />
+            </div>
+          )}
 
           {view !== 'reset' && (
             <div className="form-group">
-              <label>Contraseña</label>
+              <label>{view === 'new-password' ? 'Nueva contraseña' : 'Contraseña'}</label>
               <input
                 type="password"
                 value={password}
@@ -127,7 +158,22 @@ export function Auth() {
                 placeholder="••••••••"
                 className="input"
                 required
-                minLength={6}
+                minLength={view === 'login' ? 6 : 8}
+              />
+            </div>
+          )}
+
+          {view === 'new-password' && (
+            <div className="form-group">
+              <label>Confirmar contraseña</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+                className="input"
+                required
+                minLength={8}
               />
             </div>
           )}
@@ -143,6 +189,7 @@ export function Auth() {
             {loading ? 'Cargando...' :
               view === 'login' ? 'Entrar' :
               view === 'register' ? 'Crear cuenta' :
+              view === 'new-password' ? 'Guardar contraseña' :
               'Enviar email'}
           </button>
 

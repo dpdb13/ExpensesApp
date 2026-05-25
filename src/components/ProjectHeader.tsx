@@ -20,6 +20,8 @@ export function ProjectHeader() {
     closeProject,
     reopenProject,
     updateInviteRole,
+    unclaimMember,
+    myMemberId,
     canEdit,
     canDelete,
     isClosed
@@ -114,6 +116,15 @@ export function ProjectHeader() {
     setShowSettings(false);
   };
 
+  // Nombre del participante al que está vinculada mi cuenta en este grupo
+  const myName = myMemberId ? users.find((u) => u.id === myMemberId)?.name : null;
+
+  const handleChangeIdentity = async () => {
+    await unclaimMember();
+    // Al cerrar ajustes, reaparece el modal "¿Quién eres?" porque ya no estoy vinculado
+    setShowSettings(false);
+  };
+
   const handleReopenProject = () => {
     reopenProject();
     setShowSettings(false);
@@ -123,7 +134,7 @@ export function ProjectHeader() {
     <>
       <header className="project-header">
         <div className="header-left">
-          <button className="btn-icon" onClick={handleBack} title="Volver">
+          <button className="btn-back" onClick={handleBack} aria-label="Volver">
             ←
           </button>
 
@@ -223,6 +234,21 @@ export function ProjectHeader() {
             </div>
 
             <div className="modal-body">
+              {/* Identidad: a qué participante está vinculada mi cuenta */}
+              <div className="settings-section">
+                <label>Tu identidad en el grupo</label>
+                {myName ? (
+                  <div className="identity-row">
+                    <span className="identity-name">Eres <strong>{myName}</strong></span>
+                    <button type="button" className="btn btn-secondary btn-small" onClick={handleChangeIdentity}>
+                      Cambiar
+                    </button>
+                  </div>
+                ) : (
+                  <p className="identity-empty">Aún no has dicho quién eres en este grupo.</p>
+                )}
+              </div>
+
               {canEdit && !isClosed ? (
                 <>
                   {/* Nombre e Icono (owner/admin, proyecto abierto) */}

@@ -356,12 +356,6 @@
   gap: 2px;
 }
 
-.project-card-total {
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: var(--primary-color);
-}
-
 .project-card-arrow {
   color: var(--text-muted);
   font-size: 1rem;
@@ -725,19 +719,23 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  background: var(--surface-hover);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
+  min-width: 36px;
+  min-height: 36px;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
   cursor: pointer;
-  border-radius: var(--radius-full);
   flex-shrink: 0;
+  font-size: 1.4rem;
+  line-height: 1;
   -webkit-tap-highlight-color: transparent;
+  transition: color var(--transition-fast);
 }
 
-.back-arrow {
-  font-size: 1.1rem;
+.btn-back:hover,
+.btn-back:active {
+  color: var(--text-primary);
 }
 
 .header-title {
@@ -1233,6 +1231,7 @@
 .modal-body {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 16px 20px;
   -webkit-overflow-scrolling: touch;
 }
@@ -1664,6 +1663,7 @@
 .settlement-card {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 14px;
   background: var(--surface-hover);
@@ -1745,6 +1745,61 @@
   color: var(--text-secondary);
   margin: 0;
   font-size: 0.9rem;
+}
+
+/* Settlement actions */
+.settlement-action {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.settlement-settle-btn {
+  background: rgba(0, 217, 165, 0.15);
+  color: var(--success-color);
+  border: 1px solid rgba(0, 217, 165, 0.3);
+  padding: 6px 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.settlement-settle-btn:hover,
+.settlement-settle-btn:active {
+  background: var(--success-color);
+  color: white;
+}
+
+.settlement-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settlement-confirm-text {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* Expense card settlement style */
+.expense-card.settlement {
+  background: rgba(0, 217, 165, 0.06);
+  border-color: rgba(0, 217, 165, 0.2);
+}
+
+.avatar-settlement {
+  background: rgba(0, 217, 165, 0.15) !important;
+  color: var(--success-color) !important;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.expense-card.settlement .expense-card-payer {
+  color: var(--success-color);
 }
 
 /* Balance Cards */
@@ -1874,8 +1929,15 @@
   min-width: 45px;
 }
 
-.expense-item-title {
+.expense-item-info {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.expense-item-title {
   font-weight: 500;
   font-size: 0.85rem;
   color: var(--text-primary);
@@ -1886,8 +1948,10 @@
 
 .expense-item-payer {
   color: var(--text-muted);
-  font-size: 0.75rem;
-  display: none;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .expense-item-amount {
@@ -2298,10 +2362,6 @@
   .expense-form-modal {
     max-width: 480px;
   }
-
-  .expense-item-payer {
-    display: block;
-  }
 }
 
 /* Share Modal */
@@ -2581,4 +2641,147 @@
   .tab {
     min-height: 44px;
   }
+}
+
+/* ============================================
+   RESUMEN PERSONAL POR GASTO (perspectiva)
+   ============================================ */
+.expense-card-perspective {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  line-height: 1.2;
+}
+
+.expense-perspective-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.expense-perspective-amount {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.expense-perspective-amount.is-tedeben {
+  color: var(--success-color);
+}
+
+.expense-perspective-amount.is-debes {
+  color: var(--danger-color);
+}
+
+.expense-card-perspective.is-neutral {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.expense-card-perspective.no-participado {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  max-width: 96px;
+}
+
+/* ============================================
+   MODAL "¿QUIÉN ERES?" (vinculación)
+   ============================================ */
+.whoami-intro {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  line-height: 1.45;
+}
+
+.whoami-empty {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.whoami-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.whoami-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--surface-hover);
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  transition: all var(--transition-fast);
+}
+
+.whoami-option-name {
+  flex: 1;
+}
+
+.whoami-option.selected {
+  border-color: var(--primary-color);
+  background: var(--primary-pale);
+}
+
+.whoami-option.taken {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.whoami-option-tag {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.whoami-option-check {
+  color: var(--primary-color);
+  font-weight: 700;
+}
+
+.whoami-error {
+  color: var(--danger-color);
+  font-size: 0.85rem;
+  margin-top: 12px;
+}
+
+.whoami-footer {
+  display: flex;
+  gap: 8px;
+}
+
+.whoami-footer .btn {
+  flex: 1;
+}
+
+/* ============================================
+   IDENTIDAD EN AJUSTES ("eres X · cambiar")
+   ============================================ */
+.identity-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.identity-name {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.identity-empty {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.5;
 }

@@ -9,7 +9,7 @@ export interface ExpenseShare {
   amount: number;
 }
 
-export type ExpenseType = 'one-off' | 'recurring';
+export type ExpenseType = 'one-off' | 'recurring' | 'settlement';
 export type RecurringFrequency = 'weekly' | 'monthly' | 'yearly';
 
 export interface Expense {

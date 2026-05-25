@@ -8,13 +8,14 @@ import { UserManager } from './components/UserManager';
 import { ExpenseForm } from './components/ExpenseForm';
 import { ExpenseList } from './components/ExpenseList';
 import { Summary } from './components/Summary';
+import { WhoAmI } from './components/WhoAmI';
 import type { Expense } from './types';
 import './App.css';
 
 type Tab = 'gastos' | 'participantes' | 'resumen';
 
 function App() {
-  const { user, loading } = useAuth();
+  const { user, loading, isRecoveryMode } = useAuth();
   const { activeProject, joinProject, selectProject, isClosed } = useApp();
   const [activeTab, setActiveTab] = useState<Tab>('gastos');
   const [joinMessage, setJoinMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -136,6 +137,11 @@ function App() {
     return <Auth />;
   }
 
+  // Flujo de recuperacion de contraseña: aunque haya sesion, forzar cambio
+  if (isRecoveryMode) {
+    return <Auth initialView="new-password" />;
+  }
+
   // Lista de proyectos
   if (!activeProject) {
     return (
@@ -201,6 +207,9 @@ function App() {
           onClose={closeExpenseForm}
         />
       )}
+
+      {/* Modal "¿Quién eres?" — sale al entrar a un grupo sin vincular */}
+      <WhoAmI key={activeProject.id} />
     </div>
   );
 }

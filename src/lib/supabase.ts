@@ -41,7 +41,7 @@ export interface DbExpense {
   paid_by: string; // participant_name del miembro que pagó
   paid_by_member_id: string;
   split_type: 'equal' | 'custom';
-  expense_type: 'one-off' | 'recurring';
+  expense_type: 'one-off' | 'recurring' | 'settlement';
   recurring_frequency?: 'weekly' | 'monthly' | 'yearly';
   recurring_start_date?: string;
   created_by: string;
